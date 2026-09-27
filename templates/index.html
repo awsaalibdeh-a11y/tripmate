@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Tripmate · cheap trips, planned for you</title>
+  <meta name="description" content="Tell Tripmate where you want to go and your budget. It searches real flights, checks your budget and plans the trip.">
+  <meta name="theme-color" content="#f3f7fb">
+  <link rel="icon" href="{{ url_for('static', filename='icon.svg') }}" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ v }}">
+  <script src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js" async></script>
+  <script defer src="{{ url_for('static', filename='app.js') }}?v={{ v }}"></script>
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><img src="{{ url_for('static', filename='icon.svg') }}" alt="" width="36" height="36"><span>Tripmate</span></div>
+    <button class="ghost" id="new-chat" type="button">New trip</button>
+  </header>
+  <main class="layout">
+    <section class="intro">
+      <h1>Cheap trips, <span>planned for you.</span></h1>
+      <p>Tell Tripmate where you're flying from, where you want to go, your dates and your budget. It searches real flights, checks whether it fits, and either plans your days or finds you a cheaper way.</p>
+      <ul class="steps">
+        <li><b>1</b><span>Say the trip: <i>"Dammam to Istanbul, then Dubai, a week each, $1,000"</i></span></li>
+        <li><b>2</b><span>It searches flights and adds up the cost</span></li>
+        <li><b>3</b><span>Within budget: a day-by-day plan. Over: cheaper options</span></li>
+      </ul>
+      <p class="fine">Prices are estimates from the web: always check before you book.</p>
+    </section>
+    <section class="chat-card">
+      <openai-chatkit id="chat"></openai-chatkit>
+      <div class="chat-error" id="chat-error" hidden></div>
+    </section>
+  </main>
+</body>
+</html>
