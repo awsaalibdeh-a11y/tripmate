@@ -159,3 +159,20 @@ openai-chatkit { display: block; width: 100%; height: 100%; }
 .composer button { width: 2.9rem; height: 2.9rem; border: 0; border-radius: 50%; background: var(--blue); color: #fff; font-size: 1.15rem; cursor: pointer; box-shadow: 0 8px 16px -8px rgba(43, 127, 255, 0.9); transition: transform 0.15s; }
 .composer button:hover { transform: translateY(-2px) rotate(-8deg); }
 .composer button:disabled { opacity: 0.5; transform: none; }
+
+/* ---------- stays, quick replies, stop, share, toast ---------- */
+.ticket.stay .t-route { gap: 0.25rem; font-size: 0.95rem; }
+.ticket.stay .t-route span { color: var(--muted); font-size: 0.8rem; }
+.ticket.stay { background: #fffdf5; }
+.meter-top b { color: var(--ink); }
+.chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.7rem; }
+.chips button { min-height: 2.2rem; padding: 0 0.8rem; border: 0; border-radius: 999px; background: #fff; color: var(--blue-deep); font: 600 0.85rem Inter, sans-serif; box-shadow: inset 0 0 0 1.5px #cfe0fa; cursor: pointer; transition: transform 0.15s, background 0.15s; }
+.chips button:hover { background: #e8f1ff; transform: translateY(-1px); }
+.chips .share { color: var(--muted); box-shadow: inset 0 0 0 1.5px #e3e9f2; }
+.stop { margin-left: auto; min-height: 1.9rem; padding: 0 0.8rem; border: 0; border-radius: 999px; background: #fff; color: #b42318; font: 600 0.82rem Inter, sans-serif; cursor: pointer; box-shadow: inset 0 0 0 1.5px #f3c4bf; }
+.toast { position: fixed; left: 50%; bottom: calc(1.2rem + env(safe-area-inset-bottom)); z-index: 60; padding: 0.7rem 1.1rem; border-radius: 999px; background: var(--ink); color: #fff; font-weight: 600; transform: translateX(-50%); box-shadow: var(--shadow); animation: pop 0.25s ease; }
+.msg .muted { color: var(--muted); }
+@media (max-width: 900px) {
+  .pass { order: -1; }                                  /* on a phone the chat comes first; postcards and tips below it */
+  .intro h1 { font-size: 2rem; }
+}

@@ -7,6 +7,7 @@ const $ = (id) => document.getElementById(id);
 const KEY = "tripmate.chat";
 let history = (() => { try { return JSON.parse(localStorage.getItem(KEY) || "[]"); } catch { return []; } })();
 let busy = false;
+let controller = null;                                              // lets Stop cancel the request in flight
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(history.slice(-40))); } catch { /* private mode */ } };
 
 /* ---------- tiny safe markdown: headings, bullets, bold, links ---------- */
@@ -42,12 +43,20 @@ function bubble(role, html) {
   return el;
 }
 const scrollDown = () => { const m = $("msgs"); m.scrollTop = m.scrollHeight; };
-const money = (n) => `$${Math.round(n).toLocaleString()}`;
+// Saudi riyals are pegged at 3.75 to the dollar, so the switch is exact enough for planning
+let currency = (() => { try { return localStorage.getItem("tripmate.cur") || "USD"; } catch { return "USD"; } })();
+const money = (n) => (currency === "SAR" ? `${Math.round(n * 3.75).toLocaleString()} SAR` : `$${Math.round(n).toLocaleString()}`);
 const code = (place) => (/\(([A-Z]{3})\)/.exec(place || "") || [])[1] || String(place || "").slice(0, 3).toUpperCase();
 
 /** The flights as boarding-pass tickets, and how the total sits against the budget. */
 function tickets(trip, fits) {
   const pct = trip.budget_usd ? Math.min(100, Math.round((trip.total_usd / trip.budget_usd) * 100)) : 100;
+  const stays = (trip.stays || []).map((h) => `
+    <div class="ticket stay">
+      <div class="t-route"><b>🏨</b><span>${esc(String(h.nights))}n</span></div>
+      <div class="t-info"><span>${esc(h.name)}</span><small>${esc(h.city)} · ${money(h.price_per_night_usd)} a night</small></div>
+      <div class="t-price"><b>${money(h.price_per_night_usd * h.nights)}</b>${/^https?:\/\//.test(h.link) ? `<a href="${esc(h.link)}" target="_blank" rel="noopener noreferrer">View ↗</a>` : ""}</div>
+    </div>`).join("");
   const rows = trip.flights.map((f) => `
     <div class="ticket">
       <div class="t-route"><b>${esc(code(f.from))}</b><span class="t-plane">✈</span><b>${esc(code(f.to))}</b></div>
@@ -55,8 +64,8 @@ function tickets(trip, fits) {
       <div class="t-price"><b>${money(f.price_usd)}</b>${/^https?:\/\//.test(f.link) ? `<a href="${esc(f.link)}" target="_blank" rel="noopener noreferrer">Book ↗</a>` : ""}</div>
     </div>`).join("");
   return `<div class="trip ${fits ? "fits" : "over"}">
-    ${rows || '<p class="muted">No prices found for these flights.</p>'}
-    <div class="meter"><div class="meter-top"><span>Flights ${money(trip.total_usd)}</span><span>Budget ${trip.budget_usd ? money(trip.budget_usd) : "?"}</span></div>
+    ${rows || '<p class="muted">No prices found for these flights.</p>'}${stays}
+    <div class="meter"><div class="meter-top"><span>${trip.stays?.length ? `Flights ${money(trip.flights_usd ?? trip.total_usd)} + stays ${money(trip.stays_usd || 0)} = <b>${money(trip.total_usd)}</b>` : `Flights ${money(trip.total_usd)}`}</span><span>Budget ${trip.budget_usd ? money(trip.budget_usd) : "?"}</span></div>
       <div class="bar"><i style="width:${pct}%"></i></div>
       <div class="verdict">${fits ? `🎉 Within budget: ${money(trip.budget_usd - trip.total_usd)} left for the rest` : `😬 Over budget by ${money(trip.total_usd - trip.budget_usd)}`}</div></div>
     ${trip.notes ? `<p class="notes">ℹ️ ${esc(trip.notes)}</p>` : ""}
@@ -65,6 +74,37 @@ function tickets(trip, fits) {
 function setRoute(trip) {
   $("route-from").textContent = trip?.from_city ? code(trip.from_city) : "YOU";
   $("route-to").textContent = trip?.to_city ? code(trip.to_city) : "???";
+}
+
+/** Quick replies under an answer: tap to send. */
+function chips(el, trip, fits) {
+  const list = !trip ? [] : fits
+    ? ["📅 Try other dates", "🏨 Find a nicer hotel", "🍽️ Where should I eat?", "➕ Add another city"]
+    : [`💰 Raise my budget to $${Math.ceil(trip.total_usd / 50) * 50}`, "📅 Find cheaper dates", "🛫 Try nearby airports", "✂️ Make it shorter"];
+  const box = document.createElement("div");
+  box.className = "chips";
+  for (const c of list) {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = c;
+    b.addEventListener("click", () => send(c.replace(/^\S+\s/, "")));
+    box.append(b);
+  }
+  const share = document.createElement("button");
+  share.type = "button"; share.className = "share"; share.textContent = "📤 Share this trip";
+  share.addEventListener("click", () => shareTrip(el));
+  box.append(share);
+  el.append(box);
+}
+async function shareTrip(el) {
+  const text = `${el.innerText.replace(/📤 Share this trip[\s\S]*$/, "").trim()}\n\nPlanned with Tripmate: ${location.origin}`;
+  try { if (navigator.share) { await navigator.share({ title: "My Tripmate trip", text }); return; } } catch (e) { if (e.name === "AbortError") return; }
+  try { await navigator.clipboard.writeText(text); flash("Copied! Paste it anywhere."); } catch { flash("Couldn't copy on this browser."); }
+}
+function flash(msg) {
+  const t = document.createElement("div");
+  t.className = "toast"; t.textContent = msg;
+  document.body.append(t);
+  setTimeout(() => t.remove(), 2600);
 }
 
 /* ---------- working… ---------- */
@@ -97,7 +137,8 @@ async function send(text) {
   const body = answer.querySelector(".body"), searches = answer.querySelector(".searches");
   let reply = "", trip = null;
   try {
-    const r = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" },
+    controller = new AbortController();
+    const r = await fetch("/api/chat", { method: "POST", signal: controller.signal, headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messages: history.map(({ role, content }) => ({ role, content })) }) });
     if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || "Couldn't reach Tripmate."); }
     const reader = r.body.getReader(), dec = new TextDecoder();
@@ -129,14 +170,18 @@ async function send(text) {
       }
     }
   } catch (e) {
-    body.innerHTML = `<p class="err">${esc(e.message || "Something went wrong.")} Try sending it again.</p>`;
+    body.innerHTML = e.name === "AbortError" ? '<p class="muted">Stopped. Ask again whenever you like.</p>'
+      : `<p class="err">${esc(e.message || "Something went wrong.")} Try sending it again.</p>`;
   }
+  controller = null;
   working(false);
   if (reply) {
     // keep what the agent found in the conversation, so follow-up questions have it
-    const found = trip ? `\n\n(Flights found: ${trip.flights.map((f) => `${f.date} ${f.from}→${f.to} ${f.airline} $${f.price_usd}`).join("; ")}. Total $${trip.total_usd}, budget $${trip.budget_usd}.)` : "";
+    const found = trip ? `\n\n(Flights found: ${trip.flights.map((f) => `${f.date} ${f.from}→${f.to} ${f.airline} $${f.price_usd}`).join("; ")}.`
+      + `${trip.stays?.length ? ` Stays: ${trip.stays.map((h) => `${h.name} in ${h.city}, ${h.nights} nights at $${h.price_per_night_usd}`).join("; ")}.` : ""} Total $${trip.total_usd}, budget $${trip.budget_usd}.)` : "";
     history.push({ role: "assistant", content: reply + found, trip });
     save();
+    chips(answer, trip, trip && trip.budget_usd > 0 && trip.total_usd <= trip.budget_usd);
   } else {
     history.pop();                                                  // nothing came back: let them send it again
     save();
@@ -158,6 +203,7 @@ function restore() {
     else {
       const el = bubble("bot", markdown(m.content.replace(/\n\n\(Flights found:[\s\S]*\)$/, "")));
       if (m.trip) { el.insertAdjacentHTML("afterbegin", tickets(m.trip, m.trip.budget_usd > 0 && m.trip.total_usd <= m.trip.budget_usd)); setRoute(m.trip); }
+      if (m === history[history.length - 1] && m.trip) chips(el, m.trip, m.trip.budget_usd > 0 && m.trip.total_usd <= m.trip.budget_usd);
     }
   }
 }
@@ -217,6 +263,15 @@ $("input").addEventListener("input", grow);
 $("input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !matchMedia("(pointer: coarse)").matches) { e.preventDefault(); send($("input").value); } });
 $("composer").addEventListener("submit", (e) => { e.preventDefault(); send($("input").value); });
 $("new-chat").addEventListener("click", () => { if (busy) return; history = []; save(); setRoute(null); restore(); $("input").focus(); });
+$("stop").addEventListener("click", () => controller?.abort());
+function paintCurrency() { $("cur").textContent = currency === "SAR" ? "🇸🇦 SAR" : "🇺🇸 USD"; }
+$("cur").addEventListener("click", () => {
+  currency = currency === "SAR" ? "USD" : "SAR";
+  try { localStorage.setItem("tripmate.cur", currency); } catch { /* ignore */ }
+  paintCurrency();
+  if (!busy) restore();                                             // redraw the tickets in the new currency
+});
+paintCurrency();
 
 tickClock(); setInterval(tickClock, 15000);
 showFact(); setInterval(showFact, 9000);

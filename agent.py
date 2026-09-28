@@ -18,12 +18,12 @@ import os
 import requests
 
 log = logging.getLogger("tripmate")
-MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.5")
+MODEL = os.environ.get("OPENAI_MODEL", "gpt-5-mini")        # tested against gpt-5.5: as good at this, ~20x cheaper
 URL = "https://api.openai.com/v1/responses"
 
 TRIP_SCHEMA = {
     "type": "object", "additionalProperties": False,
-    "required": ["ready", "question", "from_city", "to_city", "travellers", "budget_usd", "flights", "total_usd", "notes"],
+    "required": ["ready", "question", "from_city", "to_city", "travellers", "budget_usd", "flights", "stays", "flights_usd", "stays_usd", "total_usd", "notes"],
     "properties": {
         "ready": {"type": "boolean", "description": "true only when origin, destination, dates and budget are all known"},
         "question": {"type": "string", "description": "when not ready: ONE short friendly question asking only for what is missing; else empty"},
@@ -42,7 +42,19 @@ TRIP_SCHEMA = {
                 "price_usd": {"type": "number", "description": "for all travellers, in USD"},
                 "link": {"type": "string", "description": "a real booking or search page where this price was found"},
             }}},
-        "total_usd": {"type": "number"},
+        "stays": {"type": "array", "description": "one cheap but decent place per city with overnight stays; empty if they have somewhere to stay or only want flights", "items": {
+            "type": "object", "additionalProperties": False,
+            "required": ["city", "nights", "name", "price_per_night_usd", "link"],
+            "properties": {
+                "city": {"type": "string"},
+                "nights": {"type": "integer"},
+                "name": {"type": "string", "description": "a real hotel or apartment, well reviewed for its price"},
+                "price_per_night_usd": {"type": "number", "description": "for the whole group, per night, in USD"},
+                "link": {"type": "string", "description": "a real page where this price was found"},
+            }}},
+        "flights_usd": {"type": "number"},
+        "stays_usd": {"type": "number", "description": "sum of nights x price per night"},
+        "total_usd": {"type": "number", "description": "flights_usd + stays_usd"},
         "notes": {"type": "string", "description": "anything the traveller should know: bags not included, price is an estimate, etc."},
     },
 }
@@ -57,14 +69,15 @@ Today is {today}.
    date unless they want a return trip.
 3. If the message isn't about travel at all, set ready to false and in question kindly steer them back to planning a trip.
 4. If something essential is missing: ready false, and question = ONE short, friendly question for only what's missing.
-5. Otherwise ready true: use web search to find real, current prices for EACH flight separately. Convert to US dollars.
-   Every flight needs a real link where you found it. Never invent a price; if you truly can't find one, leave that
-   flight out and say so in notes. total_usd is the sum of the flights."""
+5. Otherwise ready true: use web search to find real, current prices for EACH flight separately, and one cheap but decent
+   place to stay in each city where they spend nights (unless they said they have somewhere, or only want flights).
+   Convert everything to US dollars. Every flight and stay needs a real link where you found it. Never invent a price;
+   if you truly can't find one, leave it out and say so in notes. flights_usd and stays_usd are the sums; total_usd is both."""
 
 WRITER_FITS = """You are Tripmate, a warm, upbeat budget travel buddy. Today is {today}.
-The flights below FIT the traveller's budget. The page already shows each flight as a ticket with its price and link,
+The flights and stays below FIT the traveller's budget. The page already shows them as tickets with prices and links,
 so don't repeat that list. Write:
-- one short line celebrating it (how much of the budget is left),
+- one short line celebrating it (how much of the budget is left for food, transport and fun),
 - a day-by-day plan for each city (a few lines per day: what to see, cheap eats, how to get around), keeping the whole
   trip in budget: say roughly what the rest of the money covers,
 - 2-3 money-saving tips specific to these places.
@@ -72,8 +85,8 @@ Use short headings and bullet points (markdown). Friendly, not over the top. End
 with next (hotels? a different day?)."""
 
 WRITER_OVER = """You are Tripmate, a warm budget travel buddy. Today is {today}.
-The flights below cost MORE than the traveller's budget. The page already shows the flights as tickets, so don't repeat
-them. Write:
+The flights and stays below cost MORE than the traveller's budget. The page already shows them as tickets, so don't
+repeat them. Write:
 - one sentence saying by how much it's over (never comment on the traveller's money itself),
 - 3 concrete cheaper options, each with why it saves money (other dates, nearby airports like Bahrain for Dammam, budget
   airlines, fewer nights, a cheaper destination nearby). Only quote a price if it's in the data below.
@@ -138,7 +151,7 @@ def research(history):
 def write(history, trip, fits):
     """Step 3: streams the answer, a piece at a time."""
     prompt = (WRITER_FITS if fits else WRITER_OVER).format(today=_today())
-    data = json.dumps({k: trip[k] for k in ("from_city", "to_city", "travellers", "budget_usd", "flights", "total_usd", "notes")})
+    data = json.dumps({k: trip[k] for k in ("from_city", "to_city", "travellers", "budget_usd", "flights", "stays", "flights_usd", "stays_usd", "total_usd", "notes")})
     body = {"model": MODEL, "stream": True, "reasoning": {"effort": "low"},
             "input": [{"role": "system", "content": prompt}] + history + [{"role": "system", "content": f"Flight data: {data}"}]}
     with requests.post(URL, headers=_headers(), json=body, stream=True, timeout=(10, 120)) as resp:
