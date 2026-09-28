@@ -106,8 +106,9 @@ async function start() {
   await customElements.whenDefined("openai-chatkit");
   const chat = $("chat");
   chat.setOptions({
-    // the public key OpenAI gives for an allowlisted domain: it proves this chat is running on our own site
-    api: { getClientSecret, domainKey: "domain_pk_6aba7d65f7148193b0eca1e5ef8441800a5eb071134b1b8f" },
+    // a workflow hosted by OpenAI: the domain allowlist (checked by the page's address) is all it needs.
+    // (A domainKey is only for a self-hosted chat backend; setting one here switches ChatKit into that mode.)
+    api: { getClientSecret },
     theme: { colorScheme: "light", radius: "round", color: { accent: { primary: "#2b7fff", level: 1 } } },
     header: { enabled: false },
     startScreen: {
