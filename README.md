@@ -8,7 +8,7 @@ on the web, checks them against your budget, and either plans your days or sugge
 The same design as the Agent Builder workflow it started as, run in code on this server:
 
 1. **Researcher** reads the whole conversation (details often arrive over several messages), searches the web for
-   each flight, and returns data: either one friendly question for what's missing, or the flights with prices in USD
+   each flight and a cheap place to stay in each city, and returns data: either one friendly question for what's missing, or the flights and stays with prices in USD
    and booking links. Its searches stream to the page as they happen.
 2. **Budget check** is plain code: total vs budget.
 3. **Writer** streams the answer: a day-by-day plan when it fits, cheaper options when it doesn't.
@@ -23,5 +23,5 @@ pip install -r requirements.txt
 python app.py        # http://127.0.0.1:5095
 ```
 
-Environment: `OPENAI_API_KEY` (required), `OPENAI_MODEL` (default gpt-5.5), `MESSAGES_PER_HOUR` (per visitor,
+Environment: `OPENAI_API_KEY` (required), `OPENAI_MODEL` (default gpt-5-mini: tested against gpt-5.5, as good for this and ~20x cheaper), `MESSAGES_PER_HOUR` (per visitor,
 default 40: every message costs money).
