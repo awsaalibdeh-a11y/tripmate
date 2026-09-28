@@ -11,7 +11,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ v }}">
-  <script src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js" async></script>
   <script defer src="{{ url_for('static', filename='app.js') }}?v={{ v }}"></script>
 </head>
 <body>
@@ -52,14 +51,15 @@
     <section class="pass">
       <div class="pass-head">
         <div><small>Boarding pass</small><b>Tripmate Air</b></div>
-        <div class="route"><b>YOU</b><span class="dash">- - - ✈ - - -</span><b>???</b></div>
+        <div class="route"><b id="route-from">YOU</b><span class="dash">- - - ✈ - - -</span><b id="route-to">???</b></div>
         <div class="gate"><small>Gate</small><b>AI</b></div>
       </div>
+      <div class="msgs" id="msgs" role="log" aria-live="polite"></div>
       <div class="working" id="working" hidden><span class="mini-plane">✈️</span><span id="working-line">Searching flights…</span></div>
-      <div class="chat-wrap">
-        <openai-chatkit id="chat"></openai-chatkit>
-        <div class="chat-error" id="chat-error" hidden></div>
-      </div>
+      <form class="composer" id="composer">
+        <textarea id="input" rows="1" maxlength="1000" placeholder="From where, to where, when, and your budget…" aria-label="Your message"></textarea>
+        <button id="send" type="submit" aria-label="Send">➤</button>
+      </form>
       <div class="pass-foot"><span>Prices are estimates from the web: always check before you book.</span><span class="barcode" aria-hidden="true"></span></div>
     </section>
   </main>

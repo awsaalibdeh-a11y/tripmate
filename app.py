@@ -1,30 +1,28 @@
-"""Tripmate: a budget travel helper on the web, powered by an Agent Builder workflow and OpenAI's ChatKit.
+"""Tripmate: a budget travel helper on the web.
 
-How the pieces fit:
-  1. The page loads ChatKit (OpenAI's chat window) from OpenAI's CDN.
-  2. ChatKit asks this server for a session: POST /api/chatkit/session.
-  3. This server, which holds the API key, asks OpenAI for a short-lived client secret tied to the workflow, and
-     hands only that secret back. The API key itself never reaches the browser.
-  4. ChatKit then talks to OpenAI directly, and OpenAI runs the workflow (guardrails, Travel helper, the branches).
+The page sends the conversation to POST /api/chat; the agent (agent.py) researches real flights with web search,
+checks the budget, and writes a plan or cheaper options, streaming each step back. The API key never leaves this
+server.
 """
 
+import json
 import logging
 import os
 import re
 import threading
 import time
 
-import requests
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request, stream_with_context
 
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("tripmate")
 
-WORKFLOW_ID = os.environ.get("WORKFLOW_ID", "wf_6ab94f45cb588190b9cd2aee3ba2f50506b6d2a8fbd217e7")
-SESSIONS_PER_HOUR = int(os.environ.get("SESSIONS_PER_HOUR", "30"))      # per visitor: every session can spend money
+SESSIONS_PER_HOUR = int(os.environ.get("MESSAGES_PER_HOUR", "40"))      # per visitor: every message spends money
 BASE = os.path.dirname(os.path.abspath(__file__))
+
+import agent  # noqa: E402  (after load_dotenv, so it sees OPENAI_MODEL)
 
 app = Flask(__name__)
 app.config["TEMPLATES_AUTO_RELOAD"] = True
@@ -76,27 +74,38 @@ def healthz():
     return "ok"
 
 
-@app.post("/api/chatkit/session")
-def session():
-    """Swap our secret API key for a short-lived ChatKit client secret for this visitor."""
-    key = os.environ.get("OPENAI_API_KEY")
-    if not key:
+@app.post("/api/chat")
+def chat():
+    """Run the agent on the conversation so far and stream what it does, one JSON event per line."""
+    if not os.environ.get("OPENAI_API_KEY"):
         return jsonify(error="The site isn't connected to OpenAI yet."), 503
     if _limited():
-        return jsonify(error="Too many chats started from here. Try again in a while."), 429
+        return jsonify(error="That's a lot of trips in an hour. Try again in a while."), 429
     body = request.get_json(silent=True) or {}
-    user = re.sub(r"[^a-zA-Z0-9_-]", "", str(body.get("user") or ""))[:64] or "anonymous"
-    try:
-        r = requests.post("https://api.openai.com/v1/chatkit/sessions", timeout=20,
-                          headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json", "OpenAI-Beta": "chatkit_beta=v1"},
-                          json={"workflow": {"id": WORKFLOW_ID}, "user": user})
-    except requests.RequestException:
-        return jsonify(error="Couldn't reach OpenAI. Try again in a moment."), 502
-    if not r.ok:
-        log.error("ChatKit session %s: %s", r.status_code, r.text[:300])
-        return jsonify(error="OpenAI didn't start the chat. Try again in a moment."), 502
-    d = r.json()
-    return jsonify(client_secret=d["client_secret"], expires_at=d.get("expires_at"))
+    history = []
+    for m in (body.get("messages") or [])[-20:]:                     # the last 20 turns are plenty of context
+        role, text = m.get("role"), str(m.get("content") or "")[:4000]
+        if role in ("user", "assistant") and text.strip():
+            history.append({"role": role, "content": text})
+    if not history or history[-1]["role"] != "user":
+        return jsonify(error="Say where you'd like to go."), 400
+
+    def line(event):
+        return json.dumps(event) + "\n"
+
+    def stream():
+        try:
+            for event in agent.run(history):
+                yield line(event)
+        except Exception as exc:                                     # show the traveller something human, log the rest
+            log.exception("agent failed")
+            yield line({"type": "error", "text": str(exc) if isinstance(exc, RuntimeError) else "Something went wrong. Try again."})
+        yield line({"type": "done"})
+
+    resp = Response(stream_with_context(stream()), mimetype="application/x-ndjson")
+    resp.headers["Cache-Control"] = "no-store"
+    resp.headers["X-Accel-Buffering"] = "no"
+    return resp
 
 
 if __name__ == "__main__":

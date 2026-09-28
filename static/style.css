@@ -113,3 +113,49 @@ openai-chatkit { display: block; width: 100%; height: 100%; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } .takeoff { display: none; } }
 
 [hidden] { display: none !important; }
+
+/* ---------- our own chat ---------- */
+.msgs { flex: 1; min-height: 0; overflow-y: auto; display: grid; align-content: start; gap: 0.8rem; padding: 1rem 1.1rem; scroll-behavior: smooth; }
+.msg { max-width: 92%; padding: 0.7rem 0.95rem; border-radius: 1.1rem; line-height: 1.5; animation: pop 0.25s ease; }
+@keyframes pop { from { opacity: 0; transform: translateY(6px) scale(0.98); } }
+.msg.user { justify-self: end; background: var(--blue); color: #fff; border-bottom-right-radius: 0.35rem; white-space: pre-wrap; }
+.msg.bot { justify-self: start; background: #f2f7ff; color: var(--ink); border-bottom-left-radius: 0.35rem; }
+.msg.bot p { margin: 0.35rem 0; }
+.msg.bot h4 { margin: 0.8rem 0 0.2rem; font-family: var(--fun); font-size: 1.05rem; color: var(--blue-deep); }
+.msg.bot ul { margin: 0.3rem 0; padding-left: 1.2rem; }
+.msg.bot li { margin: 0.2rem 0; }
+.msg a { color: var(--blue-deep); font-weight: 600; }
+.msg .err { color: #a4231b; font-weight: 600; }
+.searches { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.searches:empty { display: none; }
+.searches span { padding: 0.2rem 0.55rem; border-radius: 999px; background: #fff; color: var(--muted); font-size: 0.78rem; box-shadow: 0 1px 2px rgba(15, 35, 64, 0.08); animation: pop 0.25s ease; }
+.body:empty { display: none; }
+.searches:not(:empty) + .body { margin-top: 0.6rem; }
+
+.trip { display: grid; gap: 0.5rem; margin-bottom: 0.7rem; }
+.ticket { position: relative; display: grid; grid-template-columns: auto 1fr auto; gap: 0.8rem; align-items: center; padding: 0.7rem 0.9rem; border-radius: 0.9rem; background: #fff; box-shadow: 0 1px 2px rgba(15, 35, 64, 0.08), 0 8px 20px -14px rgba(15, 35, 64, 0.5); }
+.ticket::before, .ticket::after { content: ""; position: absolute; left: 4.9rem; width: 0.9rem; height: 0.9rem; border-radius: 50%; background: #f2f7ff; }
+.ticket::before { top: -0.45rem; } .ticket::after { bottom: -0.45rem; }
+.t-route { display: flex; align-items: center; gap: 0.3rem; padding-right: 0.8rem; border-right: 2px dashed #dbe6f5; font-family: var(--fun); font-size: 1.05rem; }
+.t-plane { color: var(--blue); }
+.t-info { display: grid; min-width: 0; }
+.t-info span { font-weight: 600; font-size: 0.9rem; }
+.t-info small { overflow: hidden; color: var(--muted); font-size: 0.78rem; text-overflow: ellipsis; white-space: nowrap; }
+.t-price { display: grid; justify-items: end; }
+.t-price b { font-family: var(--fun); font-size: 1.15rem; color: var(--blue-deep); }
+.t-price a { font-size: 0.8rem; text-decoration: none; }
+.meter { padding: 0.6rem 0.8rem; border-radius: 0.9rem; background: #fff; }
+.meter-top { display: flex; justify-content: space-between; font-size: 0.82rem; font-weight: 600; color: var(--muted); }
+.bar { height: 0.55rem; margin: 0.35rem 0; overflow: hidden; border-radius: 999px; background: #e3ecf8; }
+.bar i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #34c77b, #7ee0a8); transition: width 0.8s ease; }
+.trip.over .bar i { background: linear-gradient(90deg, #ff9f43, #ff6b6b); }
+.verdict { font-weight: 700; font-size: 0.9rem; }
+.trip.fits .verdict { color: #1d8a52; } .trip.over .verdict { color: #c2410c; }
+.notes { margin: 0; color: var(--muted); font-size: 0.82rem; }
+
+.composer { display: grid; grid-template-columns: 1fr auto; gap: 0.5rem; align-items: end; padding: 0.7rem 0.9rem; border-top: 1px solid #e7eef8; background: #fff; }
+.composer textarea { width: 100%; min-height: 2.9rem; max-height: 8.75rem; padding: 0.7rem 0.95rem; border: 0; border-radius: 1rem; background: #f2f7ff; color: var(--ink); font: 16px/1.4 Inter, sans-serif; resize: none; outline: none; box-shadow: inset 0 0 0 1.5px transparent; }
+.composer textarea:focus { box-shadow: inset 0 0 0 2px var(--blue); background: #fff; }
+.composer button { width: 2.9rem; height: 2.9rem; border: 0; border-radius: 50%; background: var(--blue); color: #fff; font-size: 1.15rem; cursor: pointer; box-shadow: 0 8px 16px -8px rgba(43, 127, 255, 0.9); transition: transform 0.15s; }
+.composer button:hover { transform: translateY(-2px) rotate(-8deg); }
+.composer button:disabled { opacity: 0.5; transform: none; }

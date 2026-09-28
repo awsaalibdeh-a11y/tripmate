@@ -1,54 +1,174 @@
-/* Tripmate: set up OpenAI's ChatKit chat window, connect it to our workflow through our own server, and make the
-   waiting fun: a take-off screen, postcards that start a trip, a little plane while the agent searches. */
+/* Tripmate: the chat. Sends the conversation to our server, which runs the agent, and shows each step as it streams
+   back: what it's searching, the flights as boarding-pass tickets with a budget meter, then the plan word by word.
+   The conversation is kept in this browser, so a refresh doesn't lose it. */
 "use strict";
 
 const $ = (id) => document.getElementById(id);
+const KEY = "tripmate.chat";
+let history = (() => { try { return JSON.parse(localStorage.getItem(KEY) || "[]"); } catch { return []; } })();
+let busy = false;
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(history.slice(-40))); } catch { /* private mode */ } };
 
-// ChatKit refuses to run on a site OpenAI hasn't been told about: say so instead of showing an empty box.
-// (Listening from the very start: the error can come before anything else has loaded.)
-addEventListener("unhandledrejection", (e) => {
-  if (/domain verification/i.test(String(e.reason?.message || e.reason))) {
-    showError(`This website (${location.host}) isn't on the OpenAI domain allowlist yet, so the chat can't start.`);
-    landed();
+/* ---------- tiny safe markdown: headings, bullets, bold, links ---------- */
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+function inline(s) {
+  return esc(s)
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+    .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer">link ↗</a>')
+    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+}
+function markdown(text) {
+  const out = [];
+  let list = null;
+  for (const raw of String(text).split("\n")) {
+    const line = raw.trim();
+    const bullet = /^[-*•]\s+(.*)$/.exec(line) || /^\d+[.)]\s+(.*)$/.exec(line);
+    if (bullet) { if (!list) { list = []; out.push(list); } list.push(`<li>${inline(bullet[1])}</li>`); continue; }
+    list = null;
+    if (!line) continue;
+    const head = /^#{1,4}\s+(.*)$/.exec(line);
+    out.push(head ? `<h4>${inline(head[1])}</h4>` : `<p>${inline(line)}</p>`);
   }
-});
+  return out.map((x) => (Array.isArray(x) ? `<ul>${x.join("")}</ul>` : x)).join("");
+}
 
-// A random id for this browser, so the same visitor keeps their chat history.
-function visitorId() {
+/* ---------- messages ---------- */
+function bubble(role, html) {
+  const el = document.createElement("div");
+  el.className = `msg ${role}`;
+  el.innerHTML = html;
+  $("msgs").append(el);
+  scrollDown();
+  return el;
+}
+const scrollDown = () => { const m = $("msgs"); m.scrollTop = m.scrollHeight; };
+const money = (n) => `$${Math.round(n).toLocaleString()}`;
+const code = (place) => (/\(([A-Z]{3})\)/.exec(place || "") || [])[1] || String(place || "").slice(0, 3).toUpperCase();
+
+/** The flights as boarding-pass tickets, and how the total sits against the budget. */
+function tickets(trip, fits) {
+  const pct = trip.budget_usd ? Math.min(100, Math.round((trip.total_usd / trip.budget_usd) * 100)) : 100;
+  const rows = trip.flights.map((f) => `
+    <div class="ticket">
+      <div class="t-route"><b>${esc(code(f.from))}</b><span class="t-plane">✈</span><b>${esc(code(f.to))}</b></div>
+      <div class="t-info"><span>${esc(f.date)} · ${esc(f.airline)}</span><small>${esc(f.from)} → ${esc(f.to)}</small></div>
+      <div class="t-price"><b>${money(f.price_usd)}</b>${/^https?:\/\//.test(f.link) ? `<a href="${esc(f.link)}" target="_blank" rel="noopener noreferrer">Book ↗</a>` : ""}</div>
+    </div>`).join("");
+  return `<div class="trip ${fits ? "fits" : "over"}">
+    ${rows || '<p class="muted">No prices found for these flights.</p>'}
+    <div class="meter"><div class="meter-top"><span>Flights ${money(trip.total_usd)}</span><span>Budget ${trip.budget_usd ? money(trip.budget_usd) : "?"}</span></div>
+      <div class="bar"><i style="width:${pct}%"></i></div>
+      <div class="verdict">${fits ? `🎉 Within budget: ${money(trip.budget_usd - trip.total_usd)} left for the rest` : `😬 Over budget by ${money(trip.total_usd - trip.budget_usd)}`}</div></div>
+    ${trip.notes ? `<p class="notes">ℹ️ ${esc(trip.notes)}</p>` : ""}
+  </div>`;
+}
+function setRoute(trip) {
+  $("route-from").textContent = trip?.from_city ? code(trip.from_city) : "YOU";
+  $("route-to").textContent = trip?.to_city ? code(trip.to_city) : "???";
+}
+
+/* ---------- working… ---------- */
+let workTimer = null;
+function working(on, line) {
+  $("working").hidden = !on;
+  clearInterval(workTimer);
+  if (line) { $("working-line").textContent = line; return; }
+  if (on) {
+    const lines = ["Reading your trip…", "Searching flights…", "Comparing prices…", "Doing the maths…"];
+    let i = 0;
+    $("working-line").textContent = lines[0];
+    workTimer = setInterval(() => { i = Math.min(i + 1, lines.length - 1); $("working-line").textContent = lines[i]; }, 2500);
+  }
+}
+
+/* ---------- sending ---------- */
+async function send(text) {
+  text = String(text || "").trim();
+  if (!text || busy) return;
+  busy = true;
+  $("send").disabled = true;
+  $("input").value = "";
+  grow();
+  history.push({ role: "user", content: text });
+  save();
+  bubble("user", esc(text));
+  working(true);
+  const answer = bubble("bot", '<div class="searches"></div><div class="body"></div>');
+  const body = answer.querySelector(".body"), searches = answer.querySelector(".searches");
+  let reply = "", trip = null;
   try {
-    let id = localStorage.getItem("tripmate.user");
-    if (!id) { id = `u_${crypto.randomUUID().replace(/-/g, "")}`; localStorage.setItem("tripmate.user", id); }
-    return id;
-  } catch { return "anonymous"; }
+    const r = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: history.map(({ role, content }) => ({ role, content })) }) });
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || "Couldn't reach Tripmate."); }
+    const reader = r.body.getReader(), dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl); buf = buf.slice(nl + 1);
+        if (!line.trim()) continue;
+        const ev = JSON.parse(line);
+        if (ev.type === "status") {
+          working(true, ev.text);
+          if (ev.text.startsWith("Searched:")) { const s = document.createElement("span"); s.textContent = `🔎 ${ev.text.slice(9).trim()}`; searches.append(s); }
+        } else if (ev.type === "trip") {
+          trip = ev.trip;
+          setRoute(trip);
+          answer.insertAdjacentHTML("afterbegin", tickets(trip, ev.fits));
+        } else if (ev.type === "delta") {
+          working(false);
+          reply += ev.text;
+          body.innerHTML = markdown(reply);
+        } else if (ev.type === "error") {
+          throw new Error(ev.text);
+        }
+        scrollDown();
+      }
+    }
+  } catch (e) {
+    body.innerHTML = `<p class="err">${esc(e.message || "Something went wrong.")} Try sending it again.</p>`;
+  }
+  working(false);
+  if (reply) {
+    // keep what the agent found in the conversation, so follow-up questions have it
+    const found = trip ? `\n\n(Flights found: ${trip.flights.map((f) => `${f.date} ${f.from}→${f.to} ${f.airline} $${f.price_usd}`).join("; ")}. Total $${trip.total_usd}, budget $${trip.budget_usd}.)` : "";
+    history.push({ role: "assistant", content: reply + found, trip });
+    save();
+  } else {
+    history.pop();                                                  // nothing came back: let them send it again
+    save();
+  }
+  busy = false;
+  $("send").disabled = false;
+  if (!matchMedia("(pointer: coarse)").matches) $("input").focus();
 }
 
-function showError(msg) {
-  $("chat-error").textContent = msg;
-  $("chat-error").hidden = !msg;
-}
-
-async function getClientSecret() {
-  const r = await fetch("/api/chatkit/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user: visitorId() }) });
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) { showError(d.error || "Couldn't start the chat."); throw new Error(d.error || "session failed"); }
-  showError("");
-  return d.client_secret;
+/* ---------- restoring a conversation ---------- */
+function restore() {
+  $("msgs").replaceChildren();
+  if (!history.length) {
+    bubble("bot", markdown("**Hi! I'm Tripmate.** ✈️\nTell me where you're flying from, where to, when, and your budget. I'll search real flights, check the budget, and plan your days (or find a cheaper way).\nOr tap a postcard to try one."));
+    return;
+  }
+  for (const m of history) {
+    if (m.role === "user") bubble("user", esc(m.content));
+    else {
+      const el = bubble("bot", markdown(m.content.replace(/\n\n\(Flights found:[\s\S]*\)$/, "")));
+      if (m.trip) { el.insertAdjacentHTML("afterbegin", tickets(m.trip, m.trip.budget_usd > 0 && m.trip.total_usd <= m.trip.budget_usd)); setRoute(m.trip); }
+    }
+  }
 }
 
 /* ---------- the take-off screen ---------- */
 const TAKEOFF = ["Fastening seatbelts…", "Checking the weather…", "Clearing for take-off…", "Wheels up!"];
 let takeoffLine = 0;
-const takeoffTimer = setInterval(() => { takeoffLine = (takeoffLine + 1) % TAKEOFF.length; $("takeoff-line").textContent = TAKEOFF[takeoffLine]; }, 900);
-const started = Date.now();
-let hasLanded = false;
-function landed() {
-  if (hasLanded) return;                                            // ready, the fallback timer and errors can all call this
-  hasLanded = true;
-  const wait = Math.max(0, 2600 - (Date.now() - started));        // let the plane finish crossing the sky
-  setTimeout(() => { clearInterval(takeoffTimer); $("takeoff")?.classList.add("gone"); setTimeout(() => $("takeoff")?.remove(), 800); }, wait);
-}
+const takeoffTimer = setInterval(() => { takeoffLine = (takeoffLine + 1) % TAKEOFF.length; $("takeoff-line").textContent = TAKEOFF[takeoffLine]; }, 700);
+setTimeout(() => { clearInterval(takeoffTimer); $("takeoff")?.classList.add("gone"); setTimeout(() => $("takeoff")?.remove(), 800); }, 2600);
 
-/* ---------- postcards: tap one to start that trip ---------- */
+/* ---------- postcards, facts, the rotating headline, the clock ---------- */
 const POSTCARDS = [
   { city: "Istanbul", emoji: "🕌", tint: "#ffb86b", prompt: "Dammam to Istanbul, then Istanbul to Dubai, then back to Dammam. A week in each city, starting next Sunday. Budget $1,000 for one person." },
   { city: "Dubai", emoji: "🏙️", tint: "#7cc4ff", prompt: "Riyadh to Dubai for a weekend next month, budget $400, one person." },
@@ -57,25 +177,21 @@ const POSTCARDS = [
   { city: "Tokyo", emoji: "🗾", tint: "#c9a7ff", prompt: "Dubai to Tokyo for 10 days in the spring, budget $1,800 for one person." },
   { city: "Surprise me", emoji: "🎲", tint: "#ffe07a", prompt: "Surprise me: the most interesting trip I can do for 5 days from Riyadh next month with $600." },
 ];
-function postcards(chat) {
-  $("postcards").replaceChildren(...POSTCARDS.map((p) => {
-    const b = document.createElement("button");
-    b.className = "postcard";
-    b.type = "button";
-    b.style.setProperty("--tint", p.tint);
-    b.innerHTML = `<span class="stamp">${p.emoji}</span><b></b><small>Tap to plan</small>`;
-    b.querySelector("b").textContent = p.city;
-    b.addEventListener("click", () => {
-      b.classList.add("sent");
-      setTimeout(() => b.classList.remove("sent"), 900);
-      chat.sendUserMessage({ text: p.prompt }).catch(() => {});
-      if (innerWidth < 900) document.querySelector(".pass").scrollIntoView({ behavior: "smooth" });
-    });
-    return b;
-  }));
-}
-
-/* ---------- small fun things ---------- */
+$("postcards").replaceChildren(...POSTCARDS.map((p) => {
+  const b = document.createElement("button");
+  b.className = "postcard";
+  b.type = "button";
+  b.style.setProperty("--tint", p.tint);
+  b.innerHTML = `<span class="stamp">${p.emoji}</span><b>${esc(p.city)}</b><small>Tap to plan</small>`;
+  b.addEventListener("click", () => {
+    if (busy) return;
+    b.classList.add("sent");
+    setTimeout(() => b.classList.remove("sent"), 900);
+    if (innerWidth < 900) document.querySelector(".pass").scrollIntoView({ behavior: "smooth" });
+    send(p.prompt);
+  });
+  return b;
+}));
 const FACTS = [
   "Tuesdays and Wednesdays are often the cheapest days to fly.",
   "Booking about 1 to 3 months ahead usually beats booking last minute.",
@@ -85,7 +201,7 @@ const FACTS = [
   "The world's shortest scheduled flight lasts about 90 seconds (in Scotland).",
 ];
 let fact = Math.floor(Math.random() * FACTS.length);
-function showFact() { $("fact").querySelector("span").textContent = FACTS[fact]; fact = (fact + 1) % FACTS.length; }
+const showFact = () => { $("fact").querySelector("span").textContent = FACTS[fact]; fact = (fact + 1) % FACTS.length; };
 const WORDS = ["next?", "Istanbul?", "Dubai?", "Paris?", "the beach?", "Tokyo?"];
 let word = 0;
 function rotate() {
@@ -93,44 +209,16 @@ function rotate() {
   el.classList.add("out");
   setTimeout(() => { word = (word + 1) % WORDS.length; el.textContent = WORDS[word]; el.classList.remove("out"); }, 300);
 }
-function tickClock() { $("clock").textContent = `🕑 ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`; }
-const WORKING = ["Searching flights…", "Comparing prices…", "Doing the maths…", "Checking your budget…", "Packing your plan…"];
-let workTimer = null;
-function working(on) {
-  $("working").hidden = !on;
-  clearInterval(workTimer);
-  if (on) { let i = 0; $("working-line").textContent = WORKING[0]; workTimer = setInterval(() => { i = (i + 1) % WORKING.length; $("working-line").textContent = WORKING[i]; }, 1800); }
-}
+const tickClock = () => { $("clock").textContent = `🕑 ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`; };
 
-async function start() {
-  await customElements.whenDefined("openai-chatkit");
-  const chat = $("chat");
-  chat.setOptions({
-    // a workflow hosted by OpenAI: the domain allowlist (checked by the page's address) is all it needs.
-    // (A domainKey is only for a self-hosted chat backend; setting one here switches ChatKit into that mode.)
-    api: { getClientSecret },
-    theme: { colorScheme: "light", radius: "round", color: { accent: { primary: "#2b7fff", level: 1 } } },
-    header: { enabled: false },
-    startScreen: {
-      greeting: "Where do you want to go? 🌍",
-      prompts: [
-        { label: "✈️ A 3-city trip on $1,000", prompt: POSTCARDS[0].prompt },
-        { label: "🏙️ Weekend in Dubai", prompt: POSTCARDS[1].prompt },
-        { label: "🏝️ Cheapest beach trip", prompt: POSTCARDS[2].prompt },
-      ],
-    },
-    composer: { placeholder: "From where, to where, when, and your budget…" },
-  });
-  chat.addEventListener("chatkit.ready", landed);
-  chat.addEventListener("chatkit.response.start", () => working(true));
-  chat.addEventListener("chatkit.response.end", () => working(false));
-  chat.addEventListener("chatkit.error", () => working(false));
-  setTimeout(landed, 4000);                                        // never keep the plane circling forever
-  postcards(chat);
-  $("new-chat").addEventListener("click", () => location.reload());
-}
+/* ---------- the composer ---------- */
+function grow() { const t = $("input"); t.style.height = "auto"; t.style.height = `${Math.min(t.scrollHeight, 140)}px`; }
+$("input").addEventListener("input", grow);
+$("input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !matchMedia("(pointer: coarse)").matches) { e.preventDefault(); send($("input").value); } });
+$("composer").addEventListener("submit", (e) => { e.preventDefault(); send($("input").value); });
+$("new-chat").addEventListener("click", () => { if (busy) return; history = []; save(); setRoute(null); restore(); $("input").focus(); });
 
 tickClock(); setInterval(tickClock, 15000);
 showFact(); setInterval(showFact, 9000);
 setInterval(rotate, 2600);
-start().catch((e) => { console.error(e); landed(); showError("The chat couldn't load. Check your connection and refresh."); });
+restore();
