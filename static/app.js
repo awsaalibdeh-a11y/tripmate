@@ -4,6 +4,15 @@
 
 const $ = (id) => document.getElementById(id);
 
+// ChatKit refuses to run on a site OpenAI hasn't been told about: say so instead of showing an empty box.
+// (Listening from the very start: the error can come before anything else has loaded.)
+addEventListener("unhandledrejection", (e) => {
+  if (/domain verification/i.test(String(e.reason?.message || e.reason))) {
+    showError(`This website (${location.host}) isn't on the OpenAI domain allowlist yet, so the chat can't start.`);
+    landed();
+  }
+});
+
 // A random id for this browser, so the same visitor keeps their chat history.
 function visitorId() {
   try {
@@ -31,9 +40,12 @@ const TAKEOFF = ["Fastening seatbelts…", "Checking the weather…", "Clearing 
 let takeoffLine = 0;
 const takeoffTimer = setInterval(() => { takeoffLine = (takeoffLine + 1) % TAKEOFF.length; $("takeoff-line").textContent = TAKEOFF[takeoffLine]; }, 900);
 const started = Date.now();
+let hasLanded = false;
 function landed() {
+  if (hasLanded) return;                                            // ready, the fallback timer and errors can all call this
+  hasLanded = true;
   const wait = Math.max(0, 2600 - (Date.now() - started));        // let the plane finish crossing the sky
-  setTimeout(() => { clearInterval(takeoffTimer); $("takeoff").classList.add("gone"); setTimeout(() => $("takeoff").remove(), 800); }, wait);
+  setTimeout(() => { clearInterval(takeoffTimer); $("takeoff")?.classList.add("gone"); setTimeout(() => $("takeoff")?.remove(), 800); }, wait);
 }
 
 /* ---------- postcards: tap one to start that trip ---------- */
@@ -112,9 +124,6 @@ async function start() {
   chat.addEventListener("chatkit.response.start", () => working(true));
   chat.addEventListener("chatkit.response.end", () => working(false));
   chat.addEventListener("chatkit.error", () => working(false));
-  addEventListener("unhandledrejection", (e) => {                   // ChatKit refuses to run on a site OpenAI hasn't been told about
-    if (/domain verification/i.test(String(e.reason?.message || e.reason))) showError("This website isn't on the OpenAI allowlist yet, so the chat can't start.");
-  });
   setTimeout(landed, 4000);                                        // never keep the plane circling forever
   postcards(chat);
   $("new-chat").addEventListener("click", () => location.reload());
