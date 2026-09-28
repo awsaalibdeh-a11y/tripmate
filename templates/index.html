@@ -5,34 +5,62 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Tripmate · cheap trips, planned for you</title>
   <meta name="description" content="Tell Tripmate where you want to go and your budget. It searches real flights, checks your budget and plans the trip.">
-  <meta name="theme-color" content="#f3f7fb">
+  <meta name="theme-color" content="#4aa3ff">
   <link rel="icon" href="{{ url_for('static', filename='icon.svg') }}" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ v }}">
   <script src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js" async></script>
   <script defer src="{{ url_for('static', filename='app.js') }}?v={{ v }}"></script>
 </head>
 <body>
+  <!-- take-off: a plane crosses the sky while the chat gets ready -->
+  <div class="takeoff" id="takeoff" aria-live="polite">
+    <div class="cloud c1"></div><div class="cloud c2"></div><div class="cloud c3"></div>
+    <svg class="trail" viewBox="0 0 1000 300" preserveAspectRatio="none" aria-hidden="true"><path d="M-20 260 C 250 260, 350 60, 600 110 S 900 40, 1040 30" /></svg>
+    <div class="flyer" aria-hidden="true">✈️</div>
+    <div class="takeoff-text"><span class="logo-word">Tripmate</span><span id="takeoff-line">Fastening seatbelts…</span></div>
+  </div>
+
+  <div class="sky" aria-hidden="true">
+    <div class="sun"></div>
+    <div class="cloud c1"></div><div class="cloud c2"></div><div class="cloud c3"></div><div class="cloud c4"></div>
+    <div class="jet">✈️</div>
+  </div>
+
   <header class="top">
-    <div class="brand"><img src="{{ url_for('static', filename='icon.svg') }}" alt="" width="36" height="36"><span>Tripmate</span></div>
-    <button class="ghost" id="new-chat" type="button">New trip</button>
+    <div class="brand"><img src="{{ url_for('static', filename='icon.svg') }}" alt="" width="40" height="40"><span>Tripmate</span></div>
+    <div class="top-actions">
+      <span class="clock" id="clock" title="Local time where you are"></span>
+      <button class="pill" id="new-chat" type="button">✨ New trip</button>
+    </div>
   </header>
+
   <main class="layout">
     <section class="intro">
-      <h1>Cheap trips, <span>planned for you.</span></h1>
-      <p>Tell Tripmate where you're flying from, where you want to go, your dates and your budget. It searches real flights, checks whether it fits, and either plans your days or finds you a cheaper way.</p>
-      <ul class="steps">
-        <li><b>1</b><span>Say the trip: <i>"Dammam to Istanbul, then Dubai, a week each, $1,000"</i></span></li>
-        <li><b>2</b><span>It searches flights and adds up the cost</span></li>
-        <li><b>3</b><span>Within budget: a day-by-day plan. Over: cheaper options</span></li>
-      </ul>
-      <p class="fine">Prices are estimates from the web: always check before you book.</p>
+      <p class="kicker">Your AI travel buddy</p>
+      <h1>Where to <span class="rotator" id="rotator">next?</span></h1>
+      <p class="lead">Tell Tripmate where you're flying from, where you want to go, your dates and your budget. It searches real flights, adds it all up, and plans your days, or finds you a cheaper way.</p>
+
+      <p class="section-label">Tap a postcard to start</p>
+      <div class="postcards" id="postcards"></div>
+
+      <div class="fact" id="fact"><b>✈️ Did you know?</b> <span></span></div>
     </section>
-    <section class="chat-card">
-      <openai-chatkit id="chat"></openai-chatkit>
-      <div class="chat-error" id="chat-error" hidden></div>
+
+    <section class="pass">
+      <div class="pass-head">
+        <div><small>Boarding pass</small><b>Tripmate Air</b></div>
+        <div class="route"><b>YOU</b><span class="dash">- - - ✈ - - -</span><b>???</b></div>
+        <div class="gate"><small>Gate</small><b>AI</b></div>
+      </div>
+      <div class="working" id="working" hidden><span class="mini-plane">✈️</span><span id="working-line">Searching flights…</span></div>
+      <div class="chat-wrap">
+        <openai-chatkit id="chat"></openai-chatkit>
+        <div class="chat-error" id="chat-error" hidden></div>
+      </div>
+      <div class="pass-foot"><span>Prices are estimates from the web: always check before you book.</span><span class="barcode" aria-hidden="true"></span></div>
     </section>
   </main>
 </body>
