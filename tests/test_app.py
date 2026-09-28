@@ -16,7 +16,7 @@ os.chdir(ROOT)
 import app as server  # noqa: E402
 
 
-def fake_run(history):
+def fake_run(history, home=""):
     yield {"type": "status", "text": "Searched: test"}
     yield {"type": "trip", "trip": {"total_usd": 100, "budget_usd": 300}, "fits": True}
     yield {"type": "delta", "text": "Have a great trip"}
@@ -44,7 +44,7 @@ class Chat(unittest.TestCase):
         self.assertEqual(r.status_code, 400)
 
     def test_errors_become_a_friendly_event(self):
-        def boom(history):
+        def boom(history, home=""):
             raise RuntimeError("The flight search failed. Try again in a moment.")
             yield
         with mock.patch.object(server.agent, "run", boom):
@@ -58,6 +58,21 @@ class Chat(unittest.TestCase):
                 self.c.post("/api/chat", json={"messages": [{"role": "user", "content": "x"}]})
             r = self.c.post("/api/chat", json={"messages": [{"role": "user", "content": "x"}]})
         self.assertEqual(r.status_code, 429)
+
+    def test_home_reaches_the_agent_cleaned(self):
+        seen = {}
+        def spy(history, home=""):
+            seen["home"] = home
+            yield {"type": "delta", "text": "hi"}
+        with mock.patch.object(server.agent, "run", spy):
+            self.c.post("/api/chat", json={"home": "Riyadh, Saudi Arabia<script>", "messages": [{"role": "user", "content": "x"}]}).get_data()
+        self.assertEqual(seen["home"], "Riyadh, Saudi Arabiascript")
+
+    def test_explore_returns_places(self):
+        with mock.patch.object(server.agent, "explore", lambda *a: [{"name": "AlUla"}]) as _:
+            r = self.c.post("/api/explore", json={"home": "Riyadh", "days": "4", "budget": "600", "vibe": "desert"})
+        self.assertEqual(r.get_json(), {"places": [{"name": "AlUla"}]})
+        self.assertEqual(self.c.post("/api/explore", json={"days": "lots"}).status_code, 400)
 
 
 if __name__ == "__main__":

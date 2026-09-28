@@ -54,7 +54,7 @@ def headers(resp):
     h = resp.headers
     h.setdefault("X-Content-Type-Options", "nosniff")
     h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-    h.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    h.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(self)")
     if request.headers.get("X-Forwarded-Proto", request.scheme) == "https":
         h.setdefault("Strict-Transport-Security", "max-age=31536000")
     if request.path.startswith("/static/"):
@@ -90,12 +90,14 @@ def chat():
     if not history or history[-1]["role"] != "user":
         return jsonify(error="Say where you'd like to go."), 400
 
+    home = re.sub(r"[^\w ,.'-]", "", str(body.get("home") or ""), flags=re.UNICODE)[:80]
+
     def line(event):
         return json.dumps(event) + "\n"
 
     def stream():
         try:
-            for event in agent.run(history):
+            for event in agent.run(history, home):
                 yield line(event)
         except Exception as exc:                                     # show the traveller something human, log the rest
             log.exception("agent failed")
@@ -106,6 +108,30 @@ def chat():
     resp.headers["Cache-Control"] = "no-store"
     resp.headers["X-Accel-Buffering"] = "no"
     return resp
+
+
+@app.post("/api/explore")
+def explore():
+    """Trip ideas near the traveller's home: domestic and nearby abroad."""
+    if not os.environ.get("OPENAI_API_KEY"):
+        return jsonify(error="The site isn't connected to OpenAI yet."), 503
+    if _limited():
+        return jsonify(error="That's a lot of searches in an hour. Try again in a while."), 429
+    b = request.get_json(silent=True) or {}
+    clean = lambda v, n: re.sub(r"[^\w ,.'-]", "", str(v or ""), flags=re.UNICODE)[:n]
+    try:
+        days = max(1, min(30, int(b.get("days") or 4)))
+        budget = max(50, min(20000, int(float(b.get("budget") or 800))))
+    except (TypeError, ValueError):
+        return jsonify(error="Days and budget should be numbers."), 400
+    try:
+        places = agent.explore(clean(b.get("home"), 80), days, budget, clean(b.get("vibe"), 40), clean(b.get("month"), 20))
+    except RuntimeError as exc:
+        return jsonify(error=str(exc)), 502
+    except Exception:
+        log.exception("explore failed")
+        return jsonify(error="Couldn't come up with ideas just now. Try again."), 502
+    return jsonify(places=places)
 
 
 if __name__ == "__main__":
