@@ -111,6 +111,9 @@ async function start() {
   chat.addEventListener("chatkit.response.start", () => working(true));
   chat.addEventListener("chatkit.response.end", () => working(false));
   chat.addEventListener("chatkit.error", () => working(false));
+  addEventListener("unhandledrejection", (e) => {                   // ChatKit refuses to run on a site OpenAI hasn't been told about
+    if (/domain verification/i.test(String(e.reason?.message || e.reason))) showError("This website isn't on the OpenAI allowlist yet, so the chat can't start.");
+  });
   setTimeout(landed, 4000);                                        // never keep the plane circling forever
   postcards(chat);
   $("new-chat").addEventListener("click", () => location.reload());
