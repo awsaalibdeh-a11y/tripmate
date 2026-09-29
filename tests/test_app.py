@@ -74,6 +74,12 @@ class Chat(unittest.TestCase):
         self.assertEqual(r.get_json(), {"places": [{"name": "AlUla"}]})
         self.assertEqual(self.c.post("/api/explore", json={"days": "lots"}).status_code, 400)
 
+    def test_rates_fall_back_to_pegs(self):
+        server._rates["at"] = 0
+        with mock.patch.object(server.requests, "get", side_effect=OSError("offline")):
+            r = self.c.get("/api/rates")
+        self.assertEqual(r.get_json()["rates"]["SAR"], 3.75)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -12,6 +12,8 @@ import re
 import threading
 import time
 
+import requests
+
 from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, render_template, request, stream_with_context
 
@@ -54,7 +56,7 @@ def headers(resp):
     h = resp.headers
     h.setdefault("X-Content-Type-Options", "nosniff")
     h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-    h.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(self)")
+    h.setdefault("Permissions-Policy", "camera=(), microphone=(self), geolocation=(self)")
     if request.headers.get("X-Forwarded-Proto", request.scheme) == "https":
         h.setdefault("Strict-Transport-Security", "max-age=31536000")
     if request.path.startswith("/static/"):
@@ -107,6 +109,28 @@ def chat():
     resp = Response(stream_with_context(stream()), mimetype="application/x-ndjson")
     resp.headers["Cache-Control"] = "no-store"
     resp.headers["X-Accel-Buffering"] = "no"
+    return resp
+
+
+# Exchange rates for the currency picker: fetched at most every 6 hours; Gulf pegs if the source is down.
+CURRENCIES = ["USD", "SAR", "AED", "QAR", "KWD", "BHD", "OMR", "EGP", "JOD", "TRY", "EUR", "GBP", "INR", "PKR"]
+PEGS = {"USD": 1, "SAR": 3.75, "AED": 3.6725, "QAR": 3.64, "KWD": 0.307, "BHD": 0.376, "OMR": 0.3845, "JOD": 0.709}
+_rates = {"at": 0, "rates": PEGS}
+
+
+@app.get("/api/rates")
+def rates():
+    if time.time() - _rates["at"] > 6 * 3600:
+        try:
+            r = requests.get("https://open.er-api.com/v6/latest/USD", timeout=8)
+            r.raise_for_status()
+            got = r.json()["rates"]
+            _rates.update(at=time.time(), rates={c: got[c] for c in CURRENCIES if c in got})
+        except Exception as exc:                                      # keep what we had; try again in 10 minutes
+            log.warning("rates: %s", exc)
+            _rates["at"] = time.time() - 6 * 3600 + 600
+    resp = jsonify(rates=_rates["rates"])
+    resp.headers["Cache-Control"] = "public, max-age=3600"
     return resp
 
 

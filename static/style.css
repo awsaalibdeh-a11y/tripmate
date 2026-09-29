@@ -281,3 +281,69 @@ openai-chatkit { display: block; width: 100%; height: 100%; }
   .saved { grid-template-columns: 1fr auto; }
   .s-route { display: none; }
 }
+
+/* ---------- currency, mic, dice, split, destination, quiz ---------- */
+.cur-pill { display: inline-flex; align-items: center; gap: 0.2rem; padding: 0 0.4rem 0 0.8rem; }
+.cur-pill select { border: 0; background: transparent; color: var(--ink); font: 600 0.95rem Inter, sans-serif; cursor: pointer; outline: none; }
+.clock { border: 0; color: var(--ink); cursor: pointer; }
+.composer { grid-template-columns: 1fr auto auto; }
+.composer .mic { background: #f2f7ff; color: var(--ink); box-shadow: none; }
+.composer .mic.on { background: #ff5b5b; color: #fff; animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 8px rgba(255, 91, 91, 0.2); } }
+.go-row { display: grid; grid-template-columns: 1fr auto; gap: 0.5rem; }
+.dice { width: 3rem; border: 0; border-radius: 1rem; background: #fff4c9; font-size: 1.4rem; cursor: pointer; box-shadow: inset 0 0 0 1.5px #ffd76a; transition: transform 0.2s; }
+.dice:hover { transform: rotate(20deg) scale(1.08); }
+.dice.rolling { animation: roll 0.4s linear infinite; }
+@keyframes roll { to { transform: rotate(360deg); } }
+
+.split { display: flex; align-items: center; gap: 0.35rem; margin-top: 0.4rem; padding-top: 0.45rem; border-top: 1px solid #eef3fa; color: var(--muted); font-weight: 600; font-size: 0.85rem; }
+.split button { width: 1.7rem; height: 1.7rem; border: 0; border-radius: 50%; background: #f2f7ff; color: var(--blue-deep); font: 700 1rem Inter, sans-serif; cursor: pointer; }
+.split b { min-width: 1.2rem; color: var(--ink); text-align: center; }
+.split span { color: var(--blue-deep); }
+
+.dest { display: grid; gap: 0.5rem; padding: 0.7rem 0.8rem; border-radius: 0.9rem; background: linear-gradient(135deg, #eaf6ff, #fff8e6); font-size: 0.85rem; }
+.d-head { display: flex; flex-wrap: wrap; gap: 0.3rem 0.8rem; align-items: baseline; }
+.d-head span { color: var(--muted); font-weight: 600; }
+.d-days { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.3rem; }
+.d-days span { display: grid; justify-items: center; padding: 0.3rem 0; border-radius: 0.7rem; background: rgba(255, 255, 255, 0.8); font-size: 1.05rem; line-height: 1.2; }
+.d-days small { color: var(--muted); font-size: 0.68rem; font-weight: 600; }
+.d-days b { font-size: 0.82rem; }
+
+.quiz { margin: 0.6rem 0 0.2rem; padding: 0.8rem; border-radius: 1rem; background: #fff; box-shadow: inset 0 0 0 1.5px #dbe6f5; animation: pop 0.25s ease; }
+.q-top { display: flex; justify-content: space-between; color: var(--muted); font-weight: 600; font-size: 0.82rem; }
+.q-top b { color: var(--blue-deep); }
+.q-clue { margin: 0.4rem 0 0.6rem; font-size: 2.2rem; text-align: center; letter-spacing: 0.2em; animation: pop 0.3s ease; }
+.q-opts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.4rem; }
+.q-opts button { min-height: 2.4rem; padding: 0 0.4rem; border: 0; border-radius: 0.8rem; background: #f2f7ff; color: var(--ink); font: 600 0.85rem Inter, sans-serif; cursor: pointer; transition: transform 0.15s, background 0.2s; }
+.q-opts button:hover { transform: translateY(-2px); }
+.q-opts .yes { background: #34c77b; color: #fff; animation: pop 0.3s ease; }
+.q-opts .no { background: #ff6b6b; color: #fff; animation: shake 0.3s ease; }
+.q-opts .dim { opacity: 0.45; }
+@keyframes shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+
+/* ---------- night: stars, a moon, a dusky horizon ---------- */
+.stars { position: absolute; inset: 0; opacity: 0; transition: opacity 1s; background-image:
+  radial-gradient(1.5px 1.5px at 10% 12%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 25% 30%, #fff 50%, transparent 51%),
+  radial-gradient(2px 2px at 40% 8%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 55% 22%, #fff 50%, transparent 51%),
+  radial-gradient(1.5px 1.5px at 70% 40%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 85% 15%, #fff 50%, transparent 51%),
+  radial-gradient(1.5px 1.5px at 92% 55%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 15% 50%, #fff 50%, transparent 51%),
+  radial-gradient(2px 2px at 33% 62%, #fff 50%, transparent 51%), radial-gradient(1px 1px at 62% 58%, #fff 50%, transparent 51%);
+  background-size: 420px 420px; animation: twinkle 4s ease-in-out infinite alternate; }
+@keyframes twinkle { to { filter: brightness(0.6); } }
+body { transition: background 1s; }
+body.night { background: linear-gradient(180deg, #0b1a3a 0%, #1d2f66 45%, #4b3f7d 75%, #f59f6b 100%) fixed; }
+body.night .stars { opacity: 1; }
+body.night .sun { background: radial-gradient(circle at 35% 35%, #fffbe8 0%, #f4efd6 40%, rgba(244, 239, 214, 0) 62%); box-shadow: none; transform: scale(0.7); }
+body.night .sky .cloud { opacity: 0.12; }
+body.night .brand, body.night .intro h1, body.night .section-label { color: #fff; }
+body.night .rotator { color: #9fd0ff; }
+body.night .lead { color: #cfe0ff; }
+body.night .lead b { color: #fff; }
+body.night .tabs { background: rgba(255, 255, 255, 0.14); }
+body.night .tab:not(.on) { color: #fff; }
+
+@media (max-width: 560px) {
+  .cur-pill { padding: 0 0.2rem 0 0.6rem; }
+  .q-clue { font-size: 1.8rem; }
+  .d-days { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}

@@ -43,9 +43,15 @@ function bubble(role, html) {
   return el;
 }
 const scrollDown = () => { const m = $("msgs"); m.scrollTop = m.scrollHeight; };
-// Saudi riyals are pegged at 3.75 to the dollar, so the switch is exact enough for planning
-let currency = (() => { try { return localStorage.getItem("tripmate.cur") || "USD"; } catch { return "USD"; } })();
-const money = (n) => (currency === "SAR" ? `${Math.round(n * 3.75).toLocaleString()} SAR` : `$${Math.round(n).toLocaleString()}`);
+// The agent works in US dollars; the page shows any currency. Gulf pegs until live rates arrive from our server.
+let rates = { USD: 1, SAR: 3.75, AED: 3.6725, QAR: 3.64, KWD: 0.307, BHD: 0.376, OMR: 0.3845, JOD: 0.709 };
+let currency = (() => { try { return localStorage.getItem("tripmate.cur") || ""; } catch { return ""; } })();
+function money(n) {
+  const cur = rates[currency] ? currency : "USD";
+  const v = n * rates[cur];
+  try { return new Intl.NumberFormat("en", { style: "currency", currency: cur, currencyDisplay: "narrowSymbol", maximumFractionDigits: 0 }).format(v); }
+  catch { return `${Math.round(v).toLocaleString("en")} ${cur}`; }
+}
 const code = (place) => (/\(([A-Z]{3})\)/.exec(place || "") || [])[1] || String(place || "").slice(0, 3).toUpperCase();
 
 /** The flights as boarding-pass tickets, and how the total sits against the budget. */
@@ -67,7 +73,11 @@ function tickets(trip, fits) {
     ${rows || '<p class="muted">No prices found for these flights.</p>'}${stays}
     <div class="meter"><div class="meter-top"><span>${trip.stays?.length ? `Flights ${money(trip.flights_usd ?? trip.total_usd)} + stays ${money(trip.stays_usd || 0)} = <b>${money(trip.total_usd)}</b>` : `Flights ${money(trip.total_usd)}`}</span><span>Budget ${trip.budget_usd ? money(trip.budget_usd) : "?"}</span></div>
       <div class="bar"><i style="width:${pct}%"></i></div>
-      <div class="verdict">${fits ? `🎉 Within budget: ${money(trip.budget_usd - trip.total_usd)} left for the rest` : `😬 Over budget by ${money(trip.total_usd - trip.budget_usd)}`}</div></div>
+      <div class="verdict">${fits ? `🎉 Within budget: ${money(trip.budget_usd - trip.total_usd)} left for the rest` : `😬 Over budget by ${money(trip.total_usd - trip.budget_usd)}`}</div>
+      <div class="split" data-total="${Number(trip.total_usd) || 0}" data-n="${Math.max(1, trip.travellers || 1)}">👥 Split between
+        <button type="button" data-d="-1" aria-label="Fewer people">−</button><b>${Math.max(1, trip.travellers || 1)}</b><button type="button" data-d="1" aria-label="More people">+</button>
+        <span>= ${money((Number(trip.total_usd) || 0) / Math.max(1, trip.travellers || 1))} each</span></div></div>
+    ${trip.to_city ? `<div class="dest" data-city="${esc(cityName(trip.to_city))}"></div>` : ""}
     ${trip.notes ? `<p class="notes">ℹ️ ${esc(trip.notes)}</p>` : ""}
   </div>`;
 }
@@ -146,6 +156,7 @@ async function send(text) {
   working(true);
   const answer = bubble("bot", '<div class="searches"></div><div class="body"></div>');
   const body = answer.querySelector(".body"), searches = answer.querySelector(".searches");
+  const quizTimer = setTimeout(() => startQuiz(answer), 5000);        // a long search? play a game meanwhile
   let reply = "", trip = null;
   try {
     controller = new AbortController();
@@ -169,9 +180,12 @@ async function send(text) {
         } else if (ev.type === "trip") {
           trip = ev.trip;
           setRoute(trip);
+          endQuiz();
           answer.insertAdjacentHTML("afterbegin", tickets(trip, ev.fits));
+          fillDest(answer);
           if (ev.fits) confetti();
         } else if (ev.type === "delta") {
+          endQuiz();
           working(false);
           reply += ev.text;
           body.innerHTML = markdown(reply);
@@ -186,6 +200,8 @@ async function send(text) {
       : `<p class="err">${esc(e.message || "Something went wrong.")} Try sending it again.</p>`;
   }
   controller = null;
+  clearTimeout(quizTimer);
+  endQuiz();
   working(false);
   if (reply) {
     // keep what the agent found in the conversation, so follow-up questions have it
@@ -218,6 +234,7 @@ function restore() {
       if (m === history[history.length - 1] && m.trip) chips(el, m.trip, m.trip.budget_usd > 0 && m.trip.total_usd <= m.trip.budget_usd);
     }
   }
+  fillDest($("msgs"));
 }
 
 /* ---------- the take-off screen ---------- */
@@ -279,16 +296,19 @@ $("input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shif
 $("composer").addEventListener("submit", (e) => { e.preventDefault(); send($("input").value); });
 $("new-chat").addEventListener("click", () => { if (busy) return; history = []; save(); setRoute(null); restore(); $("input").focus(); });
 $("stop").addEventListener("click", () => controller?.abort());
-function paintCurrency() { $("cur").textContent = currency === "SAR" ? "🇸🇦 SAR" : "🇺🇸 USD"; }
-$("cur").addEventListener("click", () => {
-  currency = currency === "SAR" ? "USD" : "SAR";
-  try { localStorage.setItem("tripmate.cur", currency); } catch { /* ignore */ }
+function paintCurrency() {
+  $("cur").replaceChildren(...Object.keys(rates).map((c) => Object.assign(document.createElement("option"), { value: c, textContent: c })));
+  $("cur").value = rates[currency] ? currency : "USD";
+}
+function useCurrency(c, remember) {
+  currency = c;
+  if (remember) { try { localStorage.setItem("tripmate.cur", c); } catch { /* ignore */ } }
   paintCurrency();
   if (!busy) restore();                                             // redraw the tickets in the new currency
   paintSliders(); paintTrips();
   $("places").replaceChildren();
-});
-paintCurrency();
+}
+$("cur").addEventListener("change", () => useCurrency($("cur").value, true));
 
 /* ---------- home: where trips start ---------- */
 // A first guess from the time zone (no permission needed); "Use my location" asks the browser only when tapped.
@@ -316,6 +336,8 @@ function setHome(value) {
   try { localStorage.setItem("tripmate.home", home); } catch { /* private mode */ }
   paintHome(); renderPostcards();
   $("places").replaceChildren();                                   // old ideas were for the old home
+  let chosen = ""; try { chosen = localStorage.getItem("tripmate.cur") || ""; } catch { /* private mode */ }
+  if (!chosen) useCurrency(homeCurrency(), false);
   flash(`📍 Trips now start from ${homeCity()}`);
   return true;
 }
@@ -422,8 +444,8 @@ function placeCard(p, ask, i) {
 const TRIPS = "tripmate.trips";
 let trips = (() => { try { return JSON.parse(localStorage.getItem(TRIPS) || "[]"); } catch { return []; } })();
 const tripKey = (t) => `${t.from_city}|${t.to_city}|${t.flights?.[0]?.date}|${t.total_usd}`;
-function tripDate(t) {
-  const raw = t.flights?.[0]?.date;
+function tripDate(t) { return parseDate(t.flights?.[0]?.date); }
+function parseDate(raw) {
   if (!raw) return null;
   let d = new Date(raw);
   if (isNaN(d)) d = new Date(`${raw} ${new Date().getFullYear()}`);
@@ -454,7 +476,8 @@ function paintTrips() {
       el.className = "saved";
       el.innerHTML = `<div class="s-route"><b>${esc(code(t.from_city))}</b><span>✈</span><b>${esc(code(t.to_city))}</b></div>
         <div class="s-info"><b>${esc(t.from_city)} → ${esc(t.to_city)}</b><small>${esc(t.flights?.[0]?.date || "")} · ${money(t.total_usd)}${t.travellers > 1 ? ` · ${t.travellers} people` : ""}</small><span class="s-count">${countdown(t)}</span></div>
-        <div class="s-act"><button type="button" class="open">Open</button><button type="button" class="del" aria-label="Remove this trip">🗑️</button></div>`;
+        <div class="s-act"><button type="button" class="open">Open</button><button type="button" class="cal" aria-label="Add the flights to my calendar" title="Add to calendar">📅</button><button type="button" class="del" aria-label="Remove this trip">🗑️</button></div>`;
+      el.querySelector(".cal").addEventListener("click", () => calendar(s));
       el.querySelector(".open").addEventListener("click", () => {
         if (busy) return;
         history = s.chat.slice(); save(); restore(); toChat();
@@ -484,6 +507,181 @@ function confetti() {
   }));
   setTimeout(() => box.replaceChildren(), 3200);
 }
+
+/* ---------- currency: live rates, and a sensible default for where you live ---------- */
+const COUNTRY_CUR = {
+  "saudi arabia": "SAR", uae: "AED", "united arab emirates": "AED", qatar: "QAR", kuwait: "KWD", bahrain: "BHD", oman: "OMR",
+  egypt: "EGP", jordan: "JOD", "türkiye": "TRY", turkey: "TRY", uk: "GBP", "united kingdom": "GBP", india: "INR", pakistan: "PKR",
+  france: "EUR", germany: "EUR", spain: "EUR", italy: "EUR", netherlands: "EUR", ireland: "EUR", portugal: "EUR", austria: "EUR", belgium: "EUR",
+};
+function homeCurrency() { return COUNTRY_CUR[(home.split(",")[1] || home).trim().toLowerCase()] || "USD"; }
+if (!currency) currency = homeCurrency();
+paintCurrency();
+fetch("/api/rates").then((r) => r.json()).then((d) => {
+  if (!d.rates?.USD) return;
+  rates = d.rates;
+  paintCurrency(); paintSliders(); paintTrips();
+  if (currency !== "USD" && !busy) restore();
+}).catch(() => { /* the pegs are fine */ });
+
+/* ---------- the destination: weather this week and local time (Open-Meteo, free and keyless) ---------- */
+function cityName(place) { return String(place || "").split(/[,(]/)[0].trim(); }
+const WX = (c) => (c === 0 ? "☀️" : c <= 2 ? "🌤️" : c === 3 ? "☁️" : c <= 48 ? "🌫️" : c <= 67 ? "🌧️" : c <= 77 ? "❄️" : c <= 82 ? "🌦️" : "⛈️");
+const destCache = {};
+function destInfo(city) {
+  destCache[city] ??= (async () => {
+    const g = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=en`)).json();
+    const p = g.results?.[0];
+    if (!p) return null;
+    const w = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${p.latitude}&longitude=${p.longitude}`
+      + "&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=6")).json();
+    return { name: p.name, country: p.country || "", tz: p.timezone, w };
+  })().catch(() => null);
+  return destCache[city];
+}
+function hoursApart(tz) {
+  const now = new Date();
+  const there = new Date(now.toLocaleString("en-US", { timeZone: tz })), here = new Date(now.toLocaleString("en-US"));
+  return Math.round(((there - here) / 36e5) * 2) / 2;
+}
+async function fillDest(root) {
+  for (const el of root.querySelectorAll(".dest:empty")) {
+    el.innerHTML = '<span class="muted">🌍 Checking the weather there…</span>';
+    const d = await destInfo(el.dataset.city);
+    if (!d?.w?.daily) { el.remove(); continue; }
+    const diff = hoursApart(d.tz);
+    const time = new Date().toLocaleTimeString("en", { timeZone: d.tz, hour: "2-digit", minute: "2-digit" });
+    const days = d.w.daily.time.map((t, i) => `<span><small>${new Date(`${t}T12:00`).toLocaleDateString("en", { weekday: "short" })}</small>${WX(d.w.daily.weather_code[i])}<b>${Math.round(d.w.daily.temperature_2m_max[i])}°</b><small>${Math.round(d.w.daily.temperature_2m_min[i])}°</small></span>`).join("");
+    el.innerHTML = `<div class="d-head"><b>📍 ${esc(d.name)}</b>${d.country ? `, ${esc(d.country)}` : ""}
+      <span>🕐 ${time} there${diff ? ` (${Math.abs(diff)}h ${diff > 0 ? "ahead of" : "behind"} you)` : " (same time as you)"}</span>
+      <span>${WX(d.w.current.weather_code)} ${Math.round(d.w.current.temperature_2m)}°C now</span></div>
+      <div class="d-days" title="This week's forecast">${days}</div>`;
+  }
+}
+
+/* ---------- split the cost ---------- */
+$("msgs").addEventListener("click", (e) => {
+  const b = e.target.closest(".split button");
+  if (!b) return;
+  const box = b.closest(".split");
+  const n = Math.max(1, Math.min(20, +box.dataset.n + +b.dataset.d));
+  box.dataset.n = n;
+  box.querySelector("b").textContent = n;
+  box.querySelector("span").textContent = `= ${money(+box.dataset.total / n)} each`;
+});
+
+/* ---------- a game while the agent searches: guess the country from three emoji ---------- */
+const QUIZ = [
+  ["🗼🥐🧀", "France"], ["🍕🛵🏛️", "Italy"], ["🗽🍔🚕", "USA"], ["🍣🗻🌸", "Japan"], ["🐪🕋🌴", "Saudi Arabia"], ["🏙️🏎️🛍️", "UAE"],
+  ["🐨🦘🏄", "Australia"], ["🌮🌵🎺", "Mexico"], ["🫖💂🎡", "UK"], ["🥨🍺🏰", "Germany"], ["🐼🥟🧧", "China"], ["🍛🐘🕌", "India"],
+  ["⚽🎭🏖️", "Brazil"], ["🍁🏒🐻", "Canada"], ["🧿☕🎈", "Türkiye"], ["🐫🏺🔺", "Egypt"], ["🌷🚲🧀", "Netherlands"], ["💃🥘☀️", "Spain"],
+  ["🦙⛰️🏚️", "Peru"], ["🍜🏍️🌾", "Vietnam"], ["🐘🛕🥭", "Thailand"], ["🥝🐑⛰️", "New Zealand"], ["🏔️🧀⌚", "Switzerland"],
+  ["🌋🌊🐴", "Iceland"], ["🏜️🌹🏛️", "Jordan"], ["🦁🌅🦒", "Kenya"], ["🏛️🫒⛵", "Greece"], ["🧉⚽🥩", "Argentina"], ["📱🥢🎤", "South Korea"],
+  ["🏝️🐢🤿", "Maldives"], ["☕🕌🎶", "Morocco"], ["🏰🦌🎻", "Austria"],
+];
+let quiz = null;
+function startQuiz(answer) {
+  if (quiz || !busy || answer.querySelector(".trip") || answer.querySelector(".body").textContent) return;
+  quiz = { el: document.createElement("div"), right: 0, asked: 0 };
+  quiz.el.className = "quiz";
+  answer.querySelector(".searches").after(quiz.el);
+  nextQuestion();
+}
+function nextQuestion() {
+  if (!quiz) return;
+  const [clue, country] = QUIZ[Math.floor(Math.random() * QUIZ.length)];
+  const others = QUIZ.map((q) => q[1]).filter((c) => c !== country).sort(() => Math.random() - 0.5).slice(0, 2);
+  const options = [country, ...others].sort(() => Math.random() - 0.5);
+  quiz.el.innerHTML = `<div class="q-top"><span>🎮 While I search: which country?</span><b>${quiz.right}/${quiz.asked}</b></div><div class="q-clue">${clue}</div><div class="q-opts"></div>`;
+  quiz.el.querySelector(".q-opts").replaceChildren(...options.map((o) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = o;
+    b.addEventListener("click", () => {
+      if (!quiz || quiz.el.classList.contains("locked")) return;
+      quiz.el.classList.add("locked");
+      quiz.asked += 1;
+      if (o === country) quiz.right += 1;
+      quiz.el.querySelectorAll(".q-opts button").forEach((x) => x.classList.add(x.textContent === country ? "yes" : x === b ? "no" : "dim"));
+      quiz.el.querySelector(".q-top b").textContent = `${quiz.right}/${quiz.asked}`;
+      setTimeout(() => { quiz?.el.classList.remove("locked"); nextQuestion(); }, 1000);
+    });
+    return b;
+  }));
+}
+function endQuiz() {
+  if (!quiz) return;
+  const { el, right, asked } = quiz;
+  quiz = null;
+  el.remove();
+  if (asked) flash(right === asked ? `🏆 Perfect! ${right}/${asked} countries` : `🎮 You got ${right}/${asked}. Your trip's ready!`);
+}
+
+/* ---------- speak your trip (browser speech recognition, where supported) ---------- */
+const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (Speech) {
+  $("mic").hidden = false;
+  let rec = null;
+  $("mic").addEventListener("click", () => {
+    if (rec) { rec.stop(); return; }
+    rec = new Speech();
+    rec.lang = navigator.language || "en-US";
+    rec.interimResults = true;
+    const before = $("input").value.trim();
+    rec.onresult = (e) => { $("input").value = `${before} ${[...e.results].map((r) => r[0].transcript).join("")}`.trim(); grow(); };
+    rec.onerror = (e) => { if (e.error === "not-allowed") flash("Allow the microphone to talk to Tripmate."); };
+    rec.onend = () => { rec = null; $("mic").classList.remove("on"); $("input").focus(); };
+    rec.start();
+    $("mic").classList.add("on");
+  });
+}
+
+/* ---------- add the flights to a calendar (.ics works with Google, Apple and Outlook) ---------- */
+function calendar(s) {
+  const t = s.trip, ics = (x) => String(x).replace(/[\\;,]/g, (m) => `\\${m}`).replace(/\n/g, "\\n");
+  const ymd = (d) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+/, "");
+  const events = t.flights.map((f, i) => {
+    const d = parseDate(f.date);
+    if (!d) return "";
+    const next = new Date(d); next.setDate(d.getDate() + 1);
+    return ["BEGIN:VEVENT", `UID:${s.saved}-${i}@tripmate`, `DTSTAMP:${stamp}`, `DTSTART;VALUE=DATE:${ymd(d)}`, `DTEND;VALUE=DATE:${ymd(next)}`,
+      `SUMMARY:${ics(`✈️ ${cityName(f.from)} → ${cityName(f.to)} (${f.airline})`)}`,
+      `DESCRIPTION:${ics(`${f.from} → ${f.to}, about $${f.price_usd}. ${f.link || ""}\nPlanned with Tripmate.`)}`, "END:VEVENT"].join("\r\n");
+  }).filter(Boolean);
+  if (!events.length) { flash("These flights don't have dates yet."); return; }
+  const text = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Tripmate//EN", ...events, "END:VCALENDAR"].join("\r\n");
+  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([text], { type: "text/calendar" })), download: `tripmate-${cityName(t.to_city).toLowerCase().replace(/\W+/g, "-")}.ics` });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  flash("📅 Open the file to add it to your calendar");
+}
+
+/* ---------- day and night: the sky follows your clock (tap the clock to switch) ---------- */
+const hour = new Date().getHours();
+document.body.classList.toggle("night", hour >= 19 || hour < 6);
+$("clock").addEventListener("click", () => document.body.classList.toggle("night"));
+
+/* ---------- surprise me: spin the vibes, pick days and a month, then explore ---------- */
+$("surprise").addEventListener("click", () => {
+  if (exploring) return;
+  const chipsEls = [...$("vibes").querySelectorAll("button")];
+  const pick = Math.floor(Math.random() * chipsEls.length);
+  $("surprise").classList.add("rolling");
+  let i = 0;
+  const spin = setInterval(() => {
+    chipsEls.forEach((c, j) => c.classList.toggle("on", j === i % chipsEls.length));
+    i += 1;
+    if (i > chipsEls.length * 2 + pick) {
+      clearInterval(spin);
+      chipsEls[pick].click();
+      $("days").value = 3 + Math.floor(Math.random() * 5);
+      $("month").selectedIndex = 1 + Math.floor(Math.random() * 3);
+      paintSliders();
+      $("surprise").classList.remove("rolling");
+      $("explore-go").click();
+    }
+  }, 70);
+});
 
 paintHome();
 renderPostcards();

@@ -22,6 +22,11 @@ and half nearby abroad, for a vibe, number of days, budget and month (~12 s, no 
 Home is guessed from the time zone, or set by typing or "Use my location" (asked only on tap; coordinates rounded to
 ~1 km and named by BigDataCloud's free client-side reverse geocoder). Saved trips live in the browser with a countdown.
 
+Extras on the page: prices in 14 currencies (`GET /api/rates`, open.er-api.com cached 6 h, Gulf pegs as fallback; the
+default follows the home country), weather this week and local time at the destination (Open-Meteo, from the browser),
+split-the-cost, flights to a calendar (.ics), speech input, a guess-the-country game during long searches, a night sky
+after 7 pm (tap the clock), and a 🎲 Surprise me for Explore.
+
 The page shows the flights as boarding-pass tickets with a budget meter, then the plan word by word. The conversation
 is kept in the visitor's browser.
 
