@@ -25,7 +25,10 @@ Home is guessed from the time zone, or set by typing or "Use my location" (asked
 Extras on the page: prices in 14 currencies (`GET /api/rates`, open.er-api.com cached 6 h, Gulf pegs as fallback; the
 default follows the home country), weather this week and local time at the destination (Open-Meteo, from the browser),
 split-the-cost, flights to a calendar (.ics), speech input, a guess-the-country game during long searches, a night sky
-after 7 pm (tap the clock), and a 🎲 Surprise me for Explore.
+after 7 pm (tap the clock), and a 🎲 Surprise me for Explore. Each trip also gets a route map with a plane flying it
+(Leaflet from cdnjs + OpenStreetMap tiles; CARTO's free tiles now need a key), distance / time in the air / CO₂, a
+Wikipedia photo and one-line intro of the destination (Explore cards too), a packing checklist from the trip length and
+the week's weather, and a travel passport with a stamp per destination and 8 badges (all in the browser).
 
 The page shows the flights as boarding-pass tickets with a budget meter, then the plan word by word. The conversation
 is kept in the visitor's browser.

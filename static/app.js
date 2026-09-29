@@ -69,7 +69,9 @@ function tickets(trip, fits) {
       <div class="t-info"><span>${esc(f.date)} · ${esc(f.airline)}</span><small>${esc(f.from)} → ${esc(f.to)}</small></div>
       <div class="t-price"><b>${money(f.price_usd)}</b>${/^https?:\/\//.test(f.link) ? `<a href="${esc(f.link)}" target="_blank" rel="noopener noreferrer">Book ↗</a>` : ""}</div>
     </div>`).join("");
+  const legs = (trip.flights || []).map((f) => [cityName(f.from), cityName(f.to)]).filter(([a, b]) => a && b);
   return `<div class="trip ${fits ? "fits" : "over"}">
+    ${legs.length ? `<div class="map" data-legs="${esc(JSON.stringify(legs))}"></div>` : ""}
     ${rows || '<p class="muted">No prices found for these flights.</p>'}${stays}
     <div class="meter"><div class="meter-top"><span>${trip.stays?.length ? `Flights ${money(trip.flights_usd ?? trip.total_usd)} + stays ${money(trip.stays_usd || 0)} = <b>${money(trip.total_usd)}</b>` : `Flights ${money(trip.total_usd)}`}</span><span>Budget ${trip.budget_usd ? money(trip.budget_usd) : "?"}</span></div>
       <div class="bar"><i style="width:${pct}%"></i></div>
@@ -77,7 +79,7 @@ function tickets(trip, fits) {
       <div class="split" data-total="${Number(trip.total_usd) || 0}" data-n="${Math.max(1, trip.travellers || 1)}">👥 Split between
         <button type="button" data-d="-1" aria-label="Fewer people">−</button><b>${Math.max(1, trip.travellers || 1)}</b><button type="button" data-d="1" aria-label="More people">+</button>
         <span>= ${money((Number(trip.total_usd) || 0) / Math.max(1, trip.travellers || 1))} each</span></div></div>
-    ${trip.to_city ? `<div class="dest" data-city="${esc(cityName(trip.to_city))}"></div>` : ""}
+    ${trip.to_city ? `<div class="dest" data-city="${esc(cityName(trip.to_city))}" data-days="${tripDays(trip)}" data-key="${esc(tripKey(trip))}"></div>` : ""}
     ${trip.notes ? `<p class="notes">ℹ️ ${esc(trip.notes)}</p>` : ""}
   </div>`;
 }
@@ -122,10 +124,12 @@ async function shareTrip(el) {
   try { await navigator.clipboard.writeText(text); flash("Copied! Paste it anywhere."); } catch { flash("Couldn't copy on this browser."); }
 }
 function flash(msg) {
+  let stack = document.querySelector(".toasts");
+  if (!stack) { stack = Object.assign(document.createElement("div"), { className: "toasts" }); document.body.append(stack); }
   const t = document.createElement("div");
   t.className = "toast"; t.textContent = msg;
-  document.body.append(t);
-  setTimeout(() => t.remove(), 2600);
+  stack.append(t);
+  setTimeout(() => t.remove(), 3000);
 }
 
 /* ---------- working… ---------- */
@@ -183,6 +187,7 @@ async function send(text) {
           endQuiz();
           answer.insertAdjacentHTML("afterbegin", tickets(trip, ev.fits));
           fillDest(answer);
+          addStamp(trip, ev.fits);
           if (ev.fits) confetti();
         } else if (ev.type === "delta") {
           endQuiz();
@@ -411,6 +416,7 @@ $("explore-go").addEventListener("click", async () => {
     if (!r.ok) throw new Error(d.error || "Couldn't find ideas right now.");
     const places = [...d.places].sort((a, b) => b.domestic - a.domestic);
     box.replaceChildren(...places.map((p, i) => placeCard(p, ask, i)));
+    award("scout");
   } catch (e) {
     box.innerHTML = `<p class="err">${esc(e.message)} Try again.</p>`;
   }
@@ -426,12 +432,14 @@ function placeCard(p, ask, i) {
   const over = p.est_total_usd > ask.budget;
   const how = p.flight_hours > 0 ? `✈️ ${p.flight_hours < 1 ? "<1" : Math.round(p.flight_hours * 10) / 10}h flight` : "🚗 by road or train";
   el.innerHTML = `
+    <div class="p-photo"></div>
     <div class="p-top"><span class="p-emoji">${esc(p.emoji)}</span><div class="p-name"><b>${esc(p.name)}</b><small>${esc(p.country)}</small></div>
       <span class="badge">${p.domestic ? "🏠 In your country" : "🌍 Nearby abroad"}</span></div>
     <p class="p-why">${esc(p.why)}</p>
     <p class="p-hl">⭐ Don't miss: ${esc(p.highlight)}</p>
     <div class="p-stats"><span>${how}</span><span>📅 Best: ${esc(p.best_months)}</span><span>🛏️ ~${money(p.est_daily_usd)}/day</span></div>
     <div class="p-foot"><div><b class="${over ? "over" : ""}">~${money(p.est_total_usd)}</b><small>${ask.days} days, rough guess</small></div><button type="button">Plan this ✈️</button></div>`;
+  wiki(p.name).then((info) => photo(el.querySelector(".p-photo"), info));
   el.querySelector("button").addEventListener("click", () => {
     if (busy) return;
     toChat();
@@ -464,6 +472,7 @@ function saveTrip(trip) {
   trips.unshift({ key: tripKey(trip), trip, chat: history.slice(-20), saved: Date.now() });
   persistTrips();
   flash("⭐ Saved to My trips");
+  award("saver");
 }
 function paintTrips() {
   $("trips-n").textContent = trips.length || "";
@@ -528,10 +537,15 @@ fetch("/api/rates").then((r) => r.json()).then((d) => {
 function cityName(place) { return String(place || "").split(/[,(]/)[0].trim(); }
 const WX = (c) => (c === 0 ? "☀️" : c <= 2 ? "🌤️" : c === 3 ? "☁️" : c <= 48 ? "🌫️" : c <= 67 ? "🌧️" : c <= 77 ? "❄️" : c <= 82 ? "🌦️" : "⛈️");
 const destCache = {};
+const geoCache = {};
+function geocode(city) {
+  geoCache[city] ??= fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=en`)
+    .then((r) => r.json()).then((g) => g.results?.[0] || null).catch(() => null);
+  return geoCache[city];
+}
 function destInfo(city) {
   destCache[city] ??= (async () => {
-    const g = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=en`)).json();
-    const p = g.results?.[0];
+    const p = await geocode(city);
     if (!p) return null;
     const w = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${p.latitude}&longitude=${p.longitude}`
       + "&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=6")).json();
@@ -545,6 +559,7 @@ function hoursApart(tz) {
   return Math.round(((there - here) / 36e5) * 2) / 2;
 }
 async function fillDest(root) {
+  fillMaps(root);
   for (const el of root.querySelectorAll(".dest:empty")) {
     el.innerHTML = '<span class="muted">🌍 Checking the weather there…</span>';
     const d = await destInfo(el.dataset.city);
@@ -555,8 +570,182 @@ async function fillDest(root) {
     el.innerHTML = `<div class="d-head"><b>📍 ${esc(d.name)}</b>${d.country ? `, ${esc(d.country)}` : ""}
       <span>🕐 ${time} there${diff ? ` (${Math.abs(diff)}h ${diff > 0 ? "ahead of" : "behind"} you)` : " (same time as you)"}</span>
       <span>${WX(d.w.current.weather_code)} ${Math.round(d.w.current.temperature_2m)}°C now</span></div>
-      <div class="d-days" title="This week's forecast">${days}</div>`;
+      <div class="d-days" title="This week's forecast">${days}</div><div class="d-pack"></div>`;
+    fillPacking(el.querySelector(".d-pack"), el.dataset.key, +el.dataset.days || 5, d.w.daily);
+    const banner = document.createElement("a");
+    banner.className = "d-photo"; banner.target = "_blank"; banner.rel = "noopener noreferrer";
+    el.prepend(banner);
+    wiki(el.dataset.city).then((info) => {
+      if (info?.url) banner.href = info.url;
+      if (info?.text) banner.innerHTML = `<span>${esc(info.text)}</span>`;
+      photo(banner, info);
+    });
   }
+}
+
+/* ---------- the route map: a little plane flies your trip (Leaflet + OpenStreetMap tiles, loaded only when needed) ---------- */
+let leaflet = null;
+function loadLeaflet() {
+  leaflet ??= new Promise((ok, fail) => {
+    document.head.append(Object.assign(document.createElement("link"), { rel: "stylesheet", href: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" }));
+    document.head.append(Object.assign(document.createElement("script"), { src: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js", onload: () => ok(window.L), onerror: fail }));
+  });
+  return leaflet;
+}
+const rad = (d) => (d * Math.PI) / 180;
+function km([a, b], [c, d]) {
+  const h = Math.sin(rad(c - a) / 2) ** 2 + Math.cos(rad(a)) * Math.cos(rad(c)) * Math.sin(rad(d - b) / 2) ** 2;
+  return 12742 * Math.asin(Math.sqrt(h));
+}
+/** A gentle arc from A to B, like a flight path on a map. */
+function arc(A, B, steps = 40) {
+  const mid = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2], dx = B[1] - A[1], dy = B[0] - A[0];
+  const ctrl = [mid[0] + dx * 0.18, mid[1] - dy * 0.18];
+  return Array.from({ length: steps + 1 }, (_, i) => {
+    const t = i / steps, u = 1 - t;
+    return [u * u * A[0] + 2 * u * t * ctrl[0] + t * t * B[0], u * u * A[1] + 2 * u * t * ctrl[1] + t * t * B[1]];
+  });
+}
+const hrs = (h) => `${Math.floor(h)}h ${String(Math.round((h % 1) * 60)).padStart(2, "0")}m`;
+async function fillMaps(root) {
+  const els = [...root.querySelectorAll(".map:not([data-done])")];
+  if (!els.length) return;
+  els.forEach((el) => { el.dataset.done = "1"; });
+  let L;
+  try { L = await loadLeaflet(); } catch { els.forEach((el) => el.remove()); return; }
+  for (const el of els) {
+    const legs = JSON.parse(el.dataset.legs || "[]");
+    const names = [...new Set(legs.flat())];
+    const pts = Object.fromEntries(await Promise.all(names.map(async (n) => [n, await geocode(n)])));
+    const good = legs.filter(([a, b]) => pts[a] && pts[b] && a !== b);
+    if (!good.length || !el.isConnected) { el.remove(); continue; }
+    const at = (n) => [pts[n].latitude, pts[n].longitude];
+    const map = L.map(el, { zoomControl: false, scrollWheelZoom: false, dragging: !matchMedia("(pointer: coarse)").matches, attributionControl: true });
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap", maxZoom: 12 }).addTo(map);
+    let dist = 0;
+    const path = [];
+    for (const [a, b] of good) {
+      dist += km(at(a), at(b));
+      const line = arc(at(a), at(b));
+      path.push(...line);
+      L.polyline(line, { color: "#2b7fff", weight: 3, dashArray: "6 8", opacity: 0.9 }).addTo(map);
+    }
+    for (const n of names) if (pts[n]) L.marker(at(n), { icon: L.divIcon({ className: "pin", html: `<span>${esc(n)}</span>`, iconSize: null }) }).addTo(map);
+    map.fitBounds(L.latLngBounds(path), { padding: [30, 30] });
+    setTimeout(() => map.invalidateSize(), 50);
+    const plane = L.marker(path[0], { icon: L.divIcon({ className: "plane-pin", html: "<span>✈️</span>", iconSize: [26, 26] }), interactive: false }).addTo(map);
+    let i = 0;
+    const fly = setInterval(() => {
+      if (!el.isConnected) { clearInterval(fly); map.remove(); return; }
+      i = (i + 1) % (path.length + 15);                               // a short pause at the end, then again
+      const p = path[Math.min(i, path.length - 1)], q = path[Math.min(i + 1, path.length - 1)];
+      plane.setLatLng(p);
+      const a = map.latLngToLayerPoint(p), b = map.latLngToLayerPoint(q);
+      if (a.distanceTo(b) > 0.5) plane.getElement().firstChild.style.transform = `rotate(${(Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI + 45}deg)`;
+    }, 80);
+    el.insertAdjacentHTML("afterend", `<div class="route-stats"><span>🌍 ${Math.round(dist).toLocaleString("en")} km</span><span>⏱️ ~${hrs(dist / 800 + 0.5 * good.length)} in the air</span><span>🌱 ~${Math.round(dist * 0.1)} kg CO₂ each</span></div>`);
+  }
+}
+
+/* ---------- photos and a line about each place (Wikipedia's free summary API) ---------- */
+const wikiCache = {};
+function wiki(place) {
+  const title = String(place).split(/[,(&/]| and /)[0].trim();
+  if (!title) return Promise.resolve(null);
+  wikiCache[title] ??= fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, "_"))}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => (d && d.type !== "disambiguation" && d.thumbnail ? {
+      img: d.originalimage && d.originalimage.width <= 1600 ? d.originalimage.source : d.thumbnail.source,
+      text: (d.extract || "").split(/(?<=\.)\s/)[0], url: d.content_urls?.desktop?.page,
+    } : null))
+    .catch(() => null);
+  return wikiCache[title];
+}
+function photo(el, info) {
+  if (!info?.img) { el.remove(); return; }
+  const img = new Image();
+  img.onload = () => { el.style.backgroundImage = `url("${encodeURI(decodeURI(info.img))}")`; el.classList.add("loaded"); };
+  img.onerror = () => el.remove();
+  img.src = info.img;
+}
+
+/* ---------- packing list: built from the trip length and this week's weather there ---------- */
+const PACK = "tripmate.pack";
+let packed = (() => { try { return JSON.parse(localStorage.getItem(PACK) || "{}"); } catch { return {}; } })();
+function tripDays(trip) {
+  const dates = (trip.flights || []).map((f) => parseDate(f.date)).filter(Boolean);
+  if (dates.length > 1) return Math.max(1, Math.round((dates[dates.length - 1] - dates[0]) / 864e5));
+  const nights = (trip.stays || []).reduce((n, s) => n + (+s.nights || 0), 0);
+  return nights || 5;
+}
+function packingList(days, w) {
+  const hot = w && Math.max(...w.temperature_2m_max) >= 28, cold = w && Math.min(...w.temperature_2m_min) <= 12;
+  const wet = w && w.weather_code.some((c) => (c >= 51 && c <= 82) || c >= 95);
+  const d = Math.min(days, 7);
+  return [
+    "🛂 Passport / ID", "🎫 Tickets & hotel booking (screenshots too)", "💳 Card + a little local cash", "🔌 Charger + power bank", "🔌 Plug adapter",
+    "💊 Medicines", `👕 ${d} tops`, `👖 ${Math.ceil(d / 2)} trousers / skirts`, `🧦 ${Math.min(days + 1, 8)} socks & underwear`, "😴 Sleepwear",
+    "🪥 Toothbrush & toiletries", "👟 Comfy walking shoes",
+    ...(hot ? ["🧴 Sunscreen", "🕶️ Sunglasses", "🧢 Hat", "💧 Refillable water bottle"] : []),
+    ...(cold ? ["🧥 Warm jacket", "🧣 Scarf & a warm layer"] : []),
+    ...(wet ? ["☂️ Umbrella or rain jacket"] : []),
+    ...(days >= 5 ? ["🧺 Laundry bag"] : []), "🎧 Headphones for the flight",
+  ];
+}
+function fillPacking(box, key, days, w) {
+  const items = packingList(days, w), done = new Set(packed[key] || []);
+  const count = () => `${items.filter((x) => done.has(x)).length}/${items.length}`;
+  box.innerHTML = `<details class="pack"><summary>🎒 Packing list for ${days} day${days > 1 ? "s" : ""} <b>${count()}</b></summary><div class="pack-items"></div><small class="muted">Based on this week's weather there.</small></details>`;
+  box.querySelector(".pack-items").replaceChildren(...items.map((x) => {
+    const l = document.createElement("label");
+    const c = Object.assign(document.createElement("input"), { type: "checkbox", checked: done.has(x) });
+    c.addEventListener("change", () => {
+      c.checked ? done.add(x) : done.delete(x);
+      packed[key] = [...done];
+      try { localStorage.setItem(PACK, JSON.stringify(packed)); } catch { /* private mode */ }
+      box.querySelector("summary b").textContent = count();
+      if (items.every((y) => done.has(y))) { confetti(); award("packer"); }
+    });
+    l.append(c, document.createTextNode(` ${x}`));
+    return l;
+  }));
+}
+
+/* ---------- the travel passport: a stamp for every place you plan, and badges to unlock ---------- */
+const BADGES = {
+  first: ["🥇", "First trip", "Plan your first trip"], budget: ["💸", "Budget hero", "Find a trip within budget"],
+  explorer: ["🧭", "Explorer", "Plan 3 different places"], globe: ["🌍", "Globetrotter", "Plan 7 different places"],
+  scout: ["🔭", "Scout", "Find ideas with Explore"], saver: ["⭐", "Collector", "Save a trip"],
+  quiz: ["🧠", "Quiz whiz", "Score 3/3 or better in the waiting game"], packer: ["🎒", "Packed & ready", "Tick off a whole packing list"],
+};
+const STAMP_COLORS = ["#e2445c", "#2b7fff", "#1d8a52", "#9a5b00", "#7b4bd6", "#d9480f"];
+let passport = (() => { try { return JSON.parse(localStorage.getItem("tripmate.passport") || "") || null; } catch { return null; } })() || { stamps: [], badges: {} };
+const keepPassport = () => { try { localStorage.setItem("tripmate.passport", JSON.stringify(passport)); } catch { /* private mode */ } paintPassport(); };
+function award(id) {
+  if (passport.badges[id] || !BADGES[id]) return;
+  passport.badges[id] = Date.now();
+  keepPassport();
+  flash(`${BADGES[id][0]} Badge unlocked: ${BADGES[id][1]}!`);
+}
+function addStamp(trip, fits) {
+  const city = cityName(trip.to_city);
+  if (city && !passport.stamps.some((s) => s.city === city)) passport.stamps.push({ city, code: code(trip.to_city), at: Date.now() });
+  keepPassport();
+  award("first");
+  if (fits) award("budget");
+  if (passport.stamps.length >= 3) award("explorer");
+  if (passport.stamps.length >= 7) award("globe");
+}
+function paintPassport() {
+  const box = $("passport");
+  const hash = (s) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7);
+  const got = Object.keys(passport.badges).length;
+  box.innerHTML = `<div class="pp-head"><b>🛂 My travel passport</b><small>${passport.stamps.length} stamp${passport.stamps.length === 1 ? "" : "s"} · ${got}/${Object.keys(BADGES).length} badges</small></div>
+    <div class="stamps">${passport.stamps.length ? passport.stamps.map((s) => {
+      const h = Math.abs(hash(s.city));
+      return `<span class="stamp-ink" style="--c:${STAMP_COLORS[h % STAMP_COLORS.length]};--r:${(h % 25) - 12}deg"><b>${esc(s.code)}</b><small>${esc(s.city)}</small><i>${new Date(s.at).toLocaleDateString("en", { month: "short", year: "2-digit" })}</i></span>`;
+    }).join("") : '<p class="muted">Plan a trip to get your first stamp.</p>'}</div>
+    <div class="badges">${Object.entries(BADGES).map(([id, [icon, name, how]]) => `<span class="badge-${passport.badges[id] ? "on" : "off"}" title="${esc(how)}"><i>${icon}</i><b>${esc(name)}</b><small>${esc(how)}</small></span>`).join("")}</div>`;
 }
 
 /* ---------- split the cost ---------- */
@@ -613,6 +802,7 @@ function endQuiz() {
   const { el, right, asked } = quiz;
   quiz = null;
   el.remove();
+  if (asked >= 3 && right === asked) award("quiz");
   if (asked) flash(right === asked ? `🏆 Perfect! ${right}/${asked} countries` : `🎮 You got ${right}/${asked}. Your trip's ready!`);
 }
 
@@ -686,6 +876,7 @@ $("surprise").addEventListener("click", () => {
 paintHome();
 renderPostcards();
 paintTrips();
+paintPassport();
 tickClock(); setInterval(tickClock, 15000);
 showFact(); setInterval(showFact, 9000);
 setInterval(rotate, 2600);
