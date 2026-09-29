@@ -241,7 +241,7 @@ EXPLORER = """You suggest trip ideas for a budget traveller. Today is {today}. T
 Suggest 6 places that fit their vibe, their number of days and their budget: about half INSIDE their own country
 (domestic trips, including by road or train) and the rest NEARBY abroad (short flights). Prefer places that are good in
 the month they're travelling. Costs are rough estimates for one person in US dollars; keep est_total_usd honest
-(flights + days x daily) and within their budget where possible. Real places only, no two in the same city."""
+(flights + days x daily) and within their budget where possible. Real places only, none in their home city itself, no two in the same city."""
 
 
 def explore(home, days, budget, vibe, month):
