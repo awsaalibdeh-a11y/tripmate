@@ -45,6 +45,7 @@ function bubble(role, html) {
 const scrollDown = () => { const m = $("msgs"); m.scrollTop = m.scrollHeight; };
 // The agent works in US dollars; the page shows any currency. Gulf pegs until live rates arrive from our server.
 let rates = { USD: 1, SAR: 3.75, AED: 3.6725, QAR: 3.64, KWD: 0.307, BHD: 0.376, OMR: 0.3845, JOD: 0.709 };
+let PICK = Object.keys(rates);                                     // the currencies offered in the menu
 let currency = (() => { try { return localStorage.getItem("tripmate.cur") || ""; } catch { return ""; } })();
 function money(n) {
   const cur = rates[currency] ? currency : "USD";
@@ -59,42 +60,43 @@ function tickets(trip, fits) {
   const pct = trip.budget_usd ? Math.min(100, Math.round((trip.total_usd / trip.budget_usd) * 100)) : 100;
   const stays = (trip.stays || []).map((h) => `
     <div class="ticket stay">
-      <div class="t-route"><b>🏨</b><span>${esc(String(h.nights))}n</span></div>
-      <div class="t-info"><span>${esc(h.name)}</span><small>${esc(h.city)} · ${money(h.price_per_night_usd)} a night</small></div>
-      <div class="t-price"><b>${money(h.price_per_night_usd * h.nights)}</b>${/^https?:\/\//.test(h.link) ? `<a href="${esc(h.link)}" target="_blank" rel="noopener noreferrer">View ↗</a>` : ""}</div>
+      <div class="t-route"><b>🏨</b><span>${T("{n}n", { n: esc(String(h.nights)) })}</span></div>
+      <div class="t-info"><span>${esc(h.name)}</span><small>${esc(h.city)} · ${T("{p} a night", { p: money(h.price_per_night_usd) })}</small></div>
+      <div class="t-price"><b>${money(h.price_per_night_usd * h.nights)}</b>${/^https?:\/\//.test(h.link) ? `<a href="${esc(h.link)}" target="_blank" rel="noopener noreferrer">${T("View ↗")}</a>` : ""}</div>
     </div>`).join("");
   const rows = trip.flights.map((f) => `
     <div class="ticket">
       <div class="t-route"><b>${esc(code(f.from))}</b><span class="t-plane">✈</span><b>${esc(code(f.to))}</b></div>
       <div class="t-info"><span>${esc(f.date)} · ${esc(f.airline)}</span><small>${esc(f.from)} → ${esc(f.to)}</small></div>
-      <div class="t-price"><b>${money(f.price_usd)}</b>${/^https?:\/\//.test(f.link) ? `<a href="${esc(f.link)}" target="_blank" rel="noopener noreferrer">Book ↗</a>` : ""}</div>
+      <div class="t-price"><b>${money(f.price_usd)}</b>${/^https?:\/\//.test(f.link) ? `<a href="${esc(f.link)}" target="_blank" rel="noopener noreferrer">${T("Book ↗")}</a>` : ""}</div>
     </div>`).join("");
   const legs = (trip.flights || []).map((f) => [cityName(f.from), cityName(f.to)]).filter(([a, b]) => a && b);
   return `<div class="trip ${fits ? "fits" : "over"}">
     ${legs.length ? `<div class="map" data-legs="${esc(JSON.stringify(legs))}"></div>` : ""}
-    ${rows || '<p class="muted">No prices found for these flights.</p>'}${stays}
-    <div class="meter"><div class="meter-top"><span>${trip.stays?.length ? `Flights ${money(trip.flights_usd ?? trip.total_usd)} + stays ${money(trip.stays_usd || 0)} = <b>${money(trip.total_usd)}</b>` : `Flights ${money(trip.total_usd)}`}</span><span>Budget ${trip.budget_usd ? money(trip.budget_usd) : "?"}</span></div>
+    ${rows || `<p class="muted">${T("No prices found for these flights.")}</p>`}${stays}
+    <div class="meter"><div class="meter-top"><span>${trip.stays?.length ? T("Flights {a} + stays {b} = <b>{c}</b>", { a: money(trip.flights_usd ?? trip.total_usd), b: money(trip.stays_usd || 0), c: money(trip.total_usd) }) : T("Flights {a}", { a: money(trip.total_usd) })}</span><span>${T("Budget {b}", { b: trip.budget_usd ? money(trip.budget_usd) : "?" })}</span></div>
       <div class="bar"><i style="width:${pct}%"></i></div>
-      <div class="verdict">${fits ? `🎉 Within budget: ${money(trip.budget_usd - trip.total_usd)} left for the rest` : `😬 Over budget by ${money(trip.total_usd - trip.budget_usd)}`}</div>
-      <div class="split" data-total="${Number(trip.total_usd) || 0}" data-n="${Math.max(1, trip.travellers || 1)}">👥 Split between
+      <div class="verdict">${fits ? T("🎉 Within budget: {x} left for the rest", { x: money(trip.budget_usd - trip.total_usd) }) : T("😬 Over budget by {x}", { x: money(trip.total_usd - trip.budget_usd) })}</div>
+      <div class="split" data-total="${Number(trip.total_usd) || 0}" data-n="${Math.max(1, trip.travellers || 1)}">${T("👥 Split between")}
         <button type="button" data-d="-1" aria-label="Fewer people">−</button><b>${Math.max(1, trip.travellers || 1)}</b><button type="button" data-d="1" aria-label="More people">+</button>
-        <span>= ${money((Number(trip.total_usd) || 0) / Math.max(1, trip.travellers || 1))} each</span></div></div>
-    ${trip.to_city ? `<div class="dest" data-city="${esc(cityName(trip.to_city))}" data-days="${tripDays(trip)}" data-key="${esc(tripKey(trip))}"></div>` : ""}
+        <span>${T("= {x} each", { x: money((Number(trip.total_usd) || 0) / Math.max(1, trip.travellers || 1)) })}</span></div></div>
+    ${trip.to_city ? `<div class="dest" data-city="${esc(cityName(trip.to_city))}" data-days="${tripDays(trip)}" data-key="${esc(tripKey(trip))}" data-left="${fits ? Math.max(0, trip.budget_usd - trip.total_usd) : 0}"></div>` : ""}
     ${trip.notes ? `<p class="notes">ℹ️ ${esc(trip.notes)}</p>` : ""}
   </div>`;
 }
 function setRoute(trip) {
-  $("route-from").textContent = trip?.from_city ? code(trip.from_city) : "YOU";
+  $("route-from").textContent = trip?.from_city ? code(trip.from_city) : T("YOU");
   $("route-to").textContent = trip?.to_city ? code(trip.to_city) : "???";
 }
 
 /** Quick replies under an answer: tap to send. */
 function chips(el, trip, fits) {
   const planned = history.some((m) => m.trip);                     // a question answered about a trip we already found
-  const list = trip ? (fits
+  const list = (trip ? (fits
     ? ["📅 Try other dates", "🏨 Find a nicer hotel", "🍽️ Where should I eat?", "🎒 Packing list"]
-    : [`💰 Raise my budget to $${Math.ceil(trip.total_usd / 50) * 50}`, "📅 Find cheaper dates", "🛫 Try nearby airports", "✂️ Make it shorter"])
-    : planned ? ["🌦️ What's the weather like?", "🛂 Do I need a visa?", "🚕 How do I get around?", "💬 Useful local phrases"] : [];
+    : ["💰 Raise my budget to ${x}", "📅 Find cheaper dates", "🛫 Try nearby airports", "✂️ Make it shorter"])
+    : planned ? ["🌦️ What's the weather like?", "🛂 Do I need a visa?", "🚕 How do I get around?", "💬 Useful local phrases"] : [])
+    .map((c) => T(c, { x: Math.ceil((trip?.total_usd || 0) / 50) * 50 }).replace("${x}", `$${Math.ceil((trip?.total_usd || 0) / 50) * 50}`));
   if (!list.length && !trip) return;
   const box = document.createElement("div");
   box.className = "chips";
@@ -108,20 +110,28 @@ function chips(el, trip, fits) {
     const star = document.createElement("button");
     star.type = "button"; star.className = "save";
     const saved = () => trips.some((t) => t.key === tripKey(trip));
-    star.textContent = saved() ? "⭐ Saved" : "☆ Save trip";
-    star.addEventListener("click", () => { if (!saved()) saveTrip(trip); star.textContent = "⭐ Saved"; });
+    star.textContent = saved() ? T("⭐ Saved") : T("☆ Save trip");
+    star.addEventListener("click", () => { if (!saved()) saveTrip(trip); star.textContent = T("⭐ Saved"); });
     box.append(star);
   }
   const share = document.createElement("button");
-  share.type = "button"; share.className = "share"; share.textContent = "📤 Share this trip";
-  share.addEventListener("click", () => shareTrip(el));
+  share.type = "button"; share.className = "share"; share.textContent = T("📤 Share this trip");
+  share.addEventListener("click", () => shareTrip(el, trip));
   box.append(share);
   el.append(box);
 }
-async function shareTrip(el) {
-  const text = `${el.innerText.replace(/📤 Share this trip[\s\S]*$/, "").trim()}\n\nPlanned with Tripmate: ${location.origin}`;
-  try { if (navigator.share) { await navigator.share({ title: "My Tripmate trip", text }); return; } } catch (e) { if (e.name === "AbortError") return; }
-  try { await navigator.clipboard.writeText(text); flash("Copied! Paste it anywhere."); } catch { flash("Couldn't copy on this browser."); }
+/** Share a trip as a link: the whole trip rides in the link itself (after the #), so no server storage is needed. */
+async function shareTrip(el, trip) {
+  let text, url = location.origin;
+  if (trip) {
+    const packed64 = btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(trip)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    url = `${location.origin}/#t=${packed64}`;
+    text = T("My trip: {a} → {b}, {t}. Open it here:", { a: cityName(trip.from_city), b: cityName(trip.to_city), t: money(trip.total_usd) });
+  } else {
+    text = el.innerText.trim().slice(0, 600);
+  }
+  try { if (navigator.share) { await navigator.share({ title: "Tripmate", text, url }); return; } } catch (e) { if (e.name === "AbortError") return; }
+  try { await navigator.clipboard.writeText(`${text} ${url}`); flash(T("Copied! Paste it anywhere.")); } catch { flash(T("Couldn't copy on this browser.")); }
 }
 function flash(msg) {
   let stack = document.querySelector(".toasts");
@@ -139,7 +149,7 @@ function working(on, line) {
   clearInterval(workTimer);
   if (line) { $("working-line").textContent = line; return; }
   if (on) {
-    const lines = ["Reading your trip…", "Searching flights…", "Comparing prices…", "Doing the maths…"];
+    const lines = ["Reading your trip…", "Searching flights…", "Comparing prices…", "Doing the maths…"].map((x) => T(x));
     let i = 0;
     $("working-line").textContent = lines[0];
     workTimer = setInterval(() => { i = Math.min(i + 1, lines.length - 1); $("working-line").textContent = lines[i]; }, 2500);
@@ -165,8 +175,8 @@ async function send(text) {
   try {
     controller = new AbortController();
     const r = await fetch("/api/chat", { method: "POST", signal: controller.signal, headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ home, messages: history.map(({ role, content }) => ({ role, content })) }) });
-    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || "Couldn't reach Tripmate."); }
+      body: JSON.stringify({ home, lang, messages: history.map(({ role, content }) => ({ role, content })) }) });
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || T("Couldn't reach Tripmate.")); }
     const reader = r.body.getReader(), dec = new TextDecoder();
     let buf = "";
     for (;;) {
@@ -179,7 +189,7 @@ async function send(text) {
         if (!line.trim()) continue;
         const ev = JSON.parse(line);
         if (ev.type === "status") {
-          working(true, ev.text);
+          working(true, ev.text.startsWith("Searched:") ? `🔎 ${ev.text.slice(9).trim()}` : T(ev.text));
           if (ev.text.startsWith("Searched:")) { const s = document.createElement("span"); s.textContent = `🔎 ${ev.text.slice(9).trim()}`; searches.append(s); }
         } else if (ev.type === "trip") {
           trip = ev.trip;
@@ -201,8 +211,8 @@ async function send(text) {
       }
     }
   } catch (e) {
-    body.innerHTML = e.name === "AbortError" ? '<p class="muted">Stopped. Ask again whenever you like.</p>'
-      : `<p class="err">${esc(e.message || "Something went wrong.")} Try sending it again.</p>`;
+    body.innerHTML = e.name === "AbortError" ? `<p class="muted">${T("Stopped. Ask again whenever you like.")}</p>`
+      : `<p class="err">${esc(e.message || T("Something went wrong."))} ${T("Try sending it again.")}</p>`;
   }
   controller = null;
   clearTimeout(quizTimer);
@@ -228,7 +238,7 @@ async function send(text) {
 function restore() {
   $("msgs").replaceChildren();
   if (!history.length) {
-    bubble("bot", markdown("**Hi! I'm Tripmate.** ✈️\nTell me where you're flying from, where to, when, and your budget. I'll search real flights, check the budget, and plan your days (or find a cheaper way).\nOr tap a postcard to try one."));
+    bubble("bot", markdown(T("welcome")));
     return;
   }
   for (const m of history) {
@@ -243,19 +253,20 @@ function restore() {
 }
 
 /* ---------- the take-off screen ---------- */
-const TAKEOFF = ["Fastening seatbelts…", "Checking the weather…", "Clearing for take-off…", "Wheels up!"];
+const TAKEOFF = ["Fastening seatbelts…", "Checking the weather…", "Clearing for take-off…", "Wheels up!"].map((x) => T(x));
+$("takeoff-line").textContent = TAKEOFF[0];
 let takeoffLine = 0;
 const takeoffTimer = setInterval(() => { takeoffLine = (takeoffLine + 1) % TAKEOFF.length; $("takeoff-line").textContent = TAKEOFF[takeoffLine]; }, 700);
 setTimeout(() => { clearInterval(takeoffTimer); $("takeoff")?.classList.add("gone"); setTimeout(() => $("takeoff")?.remove(), 800); }, 2600);
 
 /* ---------- postcards, facts, the rotating headline, the clock ---------- */
 const POSTCARDS = [
-  { city: "Istanbul", emoji: "🕌", tint: "#ffb86b", prompt: (h) => `${h} to Istanbul for 5 days next month, with a cheap hotel. Budget $900 for one person.` },
-  { city: "Dubai", emoji: "🏙️", tint: "#7cc4ff", prompt: (h) => `${h} to Dubai for a weekend next month, budget $400, one person.` },
-  { city: "Maldives", emoji: "🏝️", tint: "#5fe0c8", prompt: (h) => `From ${h}, the cheapest beach holiday I can do for 5 days in November with $700.` },
-  { city: "Paris", emoji: "🗼", tint: "#ff9fb8", prompt: (h) => `${h} to Paris for 6 days in December, budget $1,200 for one person.` },
-  { city: "Tokyo", emoji: "🗾", tint: "#c9a7ff", prompt: (h) => `${h} to Tokyo for 10 days in the spring, budget $1,800 for one person.` },
-  { city: "Surprise me", emoji: "🎲", tint: "#ffe07a", prompt: (h) => `Surprise me: the most interesting trip I can do for 5 days from ${h} next month with $600.` },
+  { city: "Istanbul", emoji: "🕌", tint: "#ffb86b", prompt: (h) => `${h} to Istanbul for 5 days next month, with a cheap hotel. Budget $900 for one person.`, ar: (h) => `من ${h} إلى إسطنبول لمدة 5 أيام الشهر القادم مع فندق رخيص. الميزانية 900 دولار لشخص واحد.` },
+  { city: "Dubai", emoji: "🏙️", tint: "#7cc4ff", prompt: (h) => `${h} to Dubai for a weekend next month, budget $400, one person.`, ar: (h) => `من ${h} إلى دبي لعطلة نهاية أسبوع الشهر القادم، الميزانية 400 دولار لشخص واحد.` },
+  { city: "Maldives", emoji: "🏝️", tint: "#5fe0c8", prompt: (h) => `From ${h}, the cheapest beach holiday I can do for 5 days in November with $700.`, ar: (h) => `من ${h}، أرخص عطلة بحرية لمدة 5 أيام في نوفمبر بميزانية 700 دولار.` },
+  { city: "Paris", emoji: "🗼", tint: "#ff9fb8", prompt: (h) => `${h} to Paris for 6 days in December, budget $1,200 for one person.`, ar: (h) => `من ${h} إلى باريس لمدة 6 أيام في ديسمبر، الميزانية 1200 دولار لشخص واحد.` },
+  { city: "Tokyo", emoji: "🗾", tint: "#c9a7ff", prompt: (h) => `${h} to Tokyo for 10 days in the spring, budget $1,800 for one person.`, ar: (h) => `من ${h} إلى طوكيو لمدة 10 أيام في الربيع، الميزانية 1800 دولار لشخص واحد.` },
+  { city: "Surprise me", emoji: "🎲", tint: "#ffe07a", prompt: (h) => `Surprise me: the most interesting trip I can do for 5 days from ${h} next month with $600.`, ar: (h) => `فاجئني: أكثر رحلة ممتعة لمدة 5 أيام من ${h} الشهر القادم بميزانية 600 دولار.` },
 ];
 function renderPostcards() {
  $("postcards").replaceChildren(...POSTCARDS.filter((p) => p.city.toLowerCase() !== homeCity().toLowerCase()).map((p) => {
@@ -263,13 +274,13 @@ function renderPostcards() {
   b.className = "postcard";
   b.type = "button";
   b.style.setProperty("--tint", p.tint);
-  b.innerHTML = `<span class="stamp">${p.emoji}</span><b>${esc(p.city)}</b><small>Tap to plan</small>`;
+  b.innerHTML = `<span class="stamp">${p.emoji}</span><b>${esc(T(p.city))}</b><small>${T("Tap to plan")}</small>`;
   b.addEventListener("click", () => {
     if (busy) return;
     b.classList.add("sent");
     setTimeout(() => b.classList.remove("sent"), 900);
     toChat();
-    send(p.prompt(homeCity()));
+    send((lang === "ar" ? p.ar : p.prompt)(homeCity()));
   });
   return b;
  }));
@@ -284,13 +295,13 @@ const FACTS = [
   "The world's shortest scheduled flight lasts about 90 seconds (in Scotland).",
 ];
 let fact = Math.floor(Math.random() * FACTS.length);
-const showFact = () => { $("fact").querySelector("span").textContent = FACTS[fact]; fact = (fact + 1) % FACTS.length; };
+const showFact = () => { $("fact").querySelector(".fact-text").textContent = T(FACTS[fact]); fact = (fact + 1) % FACTS.length; };
 const WORDS = ["next?", "Istanbul?", "Dubai?", "Paris?", "the beach?", "Tokyo?"];
 let word = 0;
 function rotate() {
   const el = $("rotator");
   el.classList.add("out");
-  setTimeout(() => { word = (word + 1) % WORDS.length; el.textContent = WORDS[word]; el.classList.remove("out"); }, 300);
+  setTimeout(() => { word = (word + 1) % WORDS.length; el.textContent = T(WORDS[word]); el.classList.remove("out"); }, 300);
 }
 const tickClock = () => { $("clock").textContent = `🕑 ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`; };
 
@@ -302,7 +313,7 @@ $("composer").addEventListener("submit", (e) => { e.preventDefault(); send($("in
 $("new-chat").addEventListener("click", () => { if (busy) return; history = []; save(); setRoute(null); restore(); $("input").focus(); });
 $("stop").addEventListener("click", () => controller?.abort());
 function paintCurrency() {
-  $("cur").replaceChildren(...Object.keys(rates).map((c) => Object.assign(document.createElement("option"), { value: c, textContent: c })));
+  $("cur").replaceChildren(...PICK.filter((c) => rates[c]).map((c) => Object.assign(document.createElement("option"), { value: c, textContent: c })));
   $("cur").value = rates[currency] ? currency : "USD";
 }
 function useCurrency(c, remember) {
@@ -332,7 +343,7 @@ function guessHome() {
   } catch { return "Riyadh, Saudi Arabia"; }
 }
 let home = (() => { try { return localStorage.getItem("tripmate.home") || ""; } catch { return ""; } })() || guessHome();
-function homeCity() { return home.split(",")[0].trim(); }
+function homeCity() { return home.split(/[,،]/)[0].trim(); }
 function paintHome() { document.querySelectorAll(".home-city").forEach((el) => { el.textContent = homeCity(); }); }
 function setHome(value) {
   value = String(value || "").replace(/[^\p{L}\p{N} ,.'-]/gu, "").trim().slice(0, 60);
@@ -343,7 +354,7 @@ function setHome(value) {
   $("places").replaceChildren();                                   // old ideas were for the old home
   let chosen = ""; try { chosen = localStorage.getItem("tripmate.cur") || ""; } catch { /* private mode */ }
   if (!chosen) useCurrency(homeCurrency(), false);
-  flash(`📍 Trips now start from ${homeCity()}`);
+  flash(T("📍 Trips now start from {c}", { c: homeCity() }));
   return true;
 }
 $("home-list").replaceChildren(...[...new Set(Object.values(TZ_HOME))].map((v) => Object.assign(document.createElement("option"), { value: v })));
@@ -355,9 +366,9 @@ $("home-input").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.
 $("home-sheet").addEventListener("click", (e) => { if (e.target === $("home-sheet")) $("home-sheet").close(); });   // tap outside
 $("locate").addEventListener("click", () => {
   const btn = $("locate");
-  if (!navigator.geolocation) { flash("This browser can't share your location. Type your city instead."); return; }
-  btn.disabled = true; btn.textContent = "🎯 Finding you…";
-  const done = () => { btn.disabled = false; btn.textContent = "🎯 Use my location"; };
+  if (!navigator.geolocation) { flash(T("This browser can't share your location. Type your city instead.")); return; }
+  btn.disabled = true; btn.textContent = T("🎯 Finding you…");
+  const done = () => { btn.disabled = false; btn.textContent = T("🎯 Use my location"); };
   navigator.geolocation.getCurrentPosition(async (pos) => {
     try {
       // rounded to ~1 km: plenty to name the city, and no exact address leaves the phone
@@ -367,9 +378,9 @@ $("locate").addEventListener("click", () => {
       const city = d.city || d.locality || d.principalSubdivision;
       if (!city) throw new Error("no city");
       if (setHome(d.countryName ? `${city}, ${d.countryName}` : city)) $("home-sheet").close();
-    } catch { flash("Couldn't work out your city. Type it instead."); }
+    } catch { flash(T("Couldn't work out your city. Type it instead.")); }
     done();
-  }, () => { flash("Location is off. Type your city instead."); done(); }, { timeout: 12000, maximumAge: 3600000 });
+  }, () => { flash(T("Location is off. Type your city instead.")); done(); }, { timeout: 12000, maximumAge: 3600000 });
 });
 
 /* ---------- tabs: postcards, explore, my trips ---------- */
@@ -382,18 +393,29 @@ document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () 
 /* ---------- explore: where can I go from home? ---------- */
 const VIBES = ["🏖️ Beach", "🏔️ Nature", "🏙️ City lights", "🕌 History & culture", "🍜 Food", "🎢 Family fun", "🛍️ Shopping", "💆 Relax"];
 let vibe = "🏖️ Beach";
-$("vibes").replaceChildren(...VIBES.map((v) => {
-  const b = document.createElement("button");
-  b.type = "button"; b.textContent = v; b.className = v === vibe ? "on" : "";
-  b.addEventListener("click", () => { vibe = v; $("vibes").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b)); });
-  return b;
-}));
+const vibeLabel = (v) => v.replace(/^(\S+)\s(.*)$/, (m, e, n) => `${e} ${T(n)}`);
+function renderVibes() {
+  $("vibes").replaceChildren(...VIBES.map((v) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = vibeLabel(v); b.className = v === vibe ? "on" : "";
+    b.addEventListener("click", () => { vibe = v; $("vibes").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b)); });
+    return b;
+  }));
+}
+renderVibes();
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-$("month").replaceChildren(...Array.from({ length: 12 }, (_, i) => {
-  const m = MONTHS[(new Date().getMonth() + i) % 12];
-  return Object.assign(document.createElement("option"), { value: m, textContent: i === 0 ? `${m} (this month)` : m });
-}));
-$("month").selectedIndex = 1;
+function renderMonths() {
+  const keep = $("month").selectedIndex;
+  $("month").replaceChildren(...Array.from({ length: 12 }, (_, i) => {
+    const n = (new Date().getMonth() + i) % 12, m = MONTHS[n];
+    const label = new Date(2026, n, 1).toLocaleString(lang === "ar" ? "ar" : "en", { month: "long" });
+    return Object.assign(document.createElement("option"), { value: m, textContent: i === 0 ? `${label} ${T("(this month)")}` : label });
+  }));
+  $("month").selectedIndex = keep > 0 ? keep : 1;
+}
+renderMonths();
+const paintGo = () => { $("explore-go").innerHTML = T("🧭 Find places near {c}", { c: `<span class="home-city">${esc(homeCity())}</span>` }); };
+paintGo();
 const paintSliders = () => { $("days-out").textContent = $("days").value; $("budget-out").textContent = money(+$("budget").value); };
 $("days").addEventListener("input", paintSliders);
 $("budget").addEventListener("input", paintSliders);
@@ -407,22 +429,22 @@ $("explore-go").addEventListener("click", async () => {
   go.disabled = true;
   const globes = ["🌍", "🌎", "🌏"];
   let g = 0;
-  const spin = setInterval(() => { g = (g + 1) % 3; go.textContent = `${globes[g]} Spinning the globe…`; }, 350);
+  const spin = setInterval(() => { g = (g + 1) % 3; go.textContent = `${globes[g]} ${T("Spinning the globe…")}`; }, 350);
   box.replaceChildren(...Array.from({ length: 4 }, () => Object.assign(document.createElement("div"), { className: "place ghost" })));
-  const ask = { home, days: +$("days").value, budget: +$("budget").value, vibe: vibe.replace(/^\S+\s/, ""), month: $("month").value };
+  const ask = { home, lang, days: +$("days").value, budget: +$("budget").value, vibe: vibe.replace(/^\S+\s/, ""), month: $("month").value };
   try {
     const r = await fetch("/api/explore", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(ask) });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.error || "Couldn't find ideas right now.");
+    if (!r.ok) throw new Error(d.error || T("Couldn't find ideas right now."));
     const places = [...d.places].sort((a, b) => b.domestic - a.domestic);
     box.replaceChildren(...places.map((p, i) => placeCard(p, ask, i)));
     award("scout");
   } catch (e) {
-    box.innerHTML = `<p class="err">${esc(e.message)} Try again.</p>`;
+    box.innerHTML = `<p class="err">${esc(e.message)} ${T("Try again.")}</p>`;
   }
   clearInterval(spin);
   go.disabled = false;
-  go.innerHTML = `🧭 Find places near <span class="home-city">${esc(homeCity())}</span>`;
+  paintGo();
   exploring = false;
 });
 function placeCard(p, ask, i) {
@@ -430,20 +452,22 @@ function placeCard(p, ask, i) {
   el.className = `place ${p.domestic ? "domestic" : "abroad"}`;
   el.style.animationDelay = `${i * 70}ms`;
   const over = p.est_total_usd > ask.budget;
-  const how = p.flight_hours > 0 ? `✈️ ${p.flight_hours < 1 ? "<1" : Math.round(p.flight_hours * 10) / 10}h flight` : "🚗 by road or train";
+  const how = p.flight_hours > 0 ? T("✈️ {h}h flight", { h: p.flight_hours < 1 ? "<1" : Math.round(p.flight_hours * 10) / 10 }) : T("🚗 by road or train");
   el.innerHTML = `
     <div class="p-photo"></div>
     <div class="p-top"><span class="p-emoji">${esc(p.emoji)}</span><div class="p-name"><b>${esc(p.name)}</b><small>${esc(p.country)}</small></div>
-      <span class="badge">${p.domestic ? "🏠 In your country" : "🌍 Nearby abroad"}</span></div>
+      <span class="badge">${p.domestic ? T("🏠 In your country") : T("🌍 Nearby abroad")}</span></div>
     <p class="p-why">${esc(p.why)}</p>
-    <p class="p-hl">⭐ Don't miss: ${esc(p.highlight)}</p>
-    <div class="p-stats"><span>${how}</span><span>📅 Best: ${esc(p.best_months)}</span><span>🛏️ ~${money(p.est_daily_usd)}/day</span></div>
-    <div class="p-foot"><div><b class="${over ? "over" : ""}">~${money(p.est_total_usd)}</b><small>${ask.days} days, rough guess</small></div><button type="button">Plan this ✈️</button></div>`;
+    <p class="p-hl">${T("⭐ Don't miss: {x}", { x: esc(p.highlight) })}</p>
+    <div class="p-stats"><span>${how}</span><span>${T("📅 Best: {x}", { x: esc(p.best_months) })}</span><span>${T("🛏️ ~{x}/day", { x: money(p.est_daily_usd) })}</span></div>
+    <div class="p-foot"><div><b class="${over ? "over" : ""}">~${money(p.est_total_usd)}</b><small>${T("{d} days, rough guess", { d: ask.days })}</small></div><button type="button">${T("Plan this ✈️")}</button></div>`;
   wiki(p.name).then((info) => photo(el.querySelector(".p-photo"), info));
   el.querySelector("button").addEventListener("click", () => {
     if (busy) return;
     toChat();
-    send(`${homeCity()} to ${p.name}, ${p.country} for ${ask.days} days in ${ask.month}, with a cheap place to stay. Budget $${Math.max(ask.budget, Math.ceil(p.est_total_usd / 50) * 50)} for one person.`);
+    send(T("{h} to {p}, {c} for {d} days in {m}, with a cheap place to stay. Budget ${b} for one person.",
+      { h: homeCity(), p: p.name, c: p.country, d: ask.days, m: $("month").selectedOptions[0]?.textContent.replace(/\s*\(.*\)$/, "") || ask.month, b: Math.max(ask.budget, Math.ceil(p.est_total_usd / 50) * 50) })
+      .replace("${b}", `$${Math.max(ask.budget, Math.ceil(p.est_total_usd / 50) * 50)}`));
   });
   return el;
 }
@@ -463,29 +487,29 @@ function parseDate(raw) {
 }
 function countdown(t) {
   const d = tripDate(t);
-  if (!d) return "🗓️ Date to be set";
+  if (!d) return T("🗓️ Date to be set");
   const days = Math.ceil((d.setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 864e5);
-  return days > 1 ? `⏳ ${days} days to go` : days === 1 ? "🎒 Tomorrow!" : days === 0 ? "✈️ Today!" : "📸 Been there";
+  return days > 1 ? T("⏳ {n} days to go", { n: days }) : days === 1 ? T("🎒 Tomorrow!") : days === 0 ? T("✈️ Today!") : T("📸 Been there");
 }
 function persistTrips() { try { localStorage.setItem(TRIPS, JSON.stringify(trips.slice(0, 20))); } catch { /* private mode */ } paintTrips(); }
 function saveTrip(trip) {
   trips.unshift({ key: tripKey(trip), trip, chat: history.slice(-20), saved: Date.now() });
   persistTrips();
-  flash("⭐ Saved to My trips");
+  flash(T("⭐ Saved to My trips"));
   award("saver");
 }
 function paintTrips() {
   $("trips-n").textContent = trips.length || "";
   const box = $("trips");
   if (!trips.length) {
-    box.innerHTML = '<div class="empty"><span>🧳</span><p>No saved trips yet. Plan one and tap <b>☆ Save trip</b> to keep it here with a countdown.</p></div>';
+    box.innerHTML = `<div class="empty"><span>🧳</span><p>${T("empty-trips")}</p></div>`;
   } else {
     box.replaceChildren(...trips.map((s) => {
       const t = s.trip, el = document.createElement("article");
       el.className = "saved";
       el.innerHTML = `<div class="s-route"><b>${esc(code(t.from_city))}</b><span>✈</span><b>${esc(code(t.to_city))}</b></div>
-        <div class="s-info"><b>${esc(t.from_city)} → ${esc(t.to_city)}</b><small>${esc(t.flights?.[0]?.date || "")} · ${money(t.total_usd)}${t.travellers > 1 ? ` · ${t.travellers} people` : ""}</small><span class="s-count">${countdown(t)}</span></div>
-        <div class="s-act"><button type="button" class="open">Open</button><button type="button" class="cal" aria-label="Add the flights to my calendar" title="Add to calendar">📅</button><button type="button" class="del" aria-label="Remove this trip">🗑️</button></div>`;
+        <div class="s-info"><b>${esc(t.from_city)} → ${esc(t.to_city)}</b><small>${esc(t.flights?.[0]?.date || "")} · ${money(t.total_usd)}${t.travellers > 1 ? ` · ${T("{n} people", { n: t.travellers })}` : ""}</small><span class="s-count">${countdown(t)}</span></div>
+        <div class="s-act"><button type="button" class="open">${T("Open")}</button><button type="button" class="cal" aria-label="Add the flights to my calendar" title="Add to calendar">📅</button><button type="button" class="del" aria-label="Remove this trip">🗑️</button></div>`;
       el.querySelector(".cal").addEventListener("click", () => calendar(s));
       el.querySelector(".open").addEventListener("click", () => {
         if (busy) return;
@@ -522,13 +546,16 @@ const COUNTRY_CUR = {
   "saudi arabia": "SAR", uae: "AED", "united arab emirates": "AED", qatar: "QAR", kuwait: "KWD", bahrain: "BHD", oman: "OMR",
   egypt: "EGP", jordan: "JOD", "türkiye": "TRY", turkey: "TRY", uk: "GBP", "united kingdom": "GBP", india: "INR", pakistan: "PKR",
   france: "EUR", germany: "EUR", spain: "EUR", italy: "EUR", netherlands: "EUR", ireland: "EUR", portugal: "EUR", austria: "EUR", belgium: "EUR",
+  "السعودية": "SAR", "المملكة العربية السعودية": "SAR", "الإمارات": "AED", "قطر": "QAR", "الكويت": "KWD", "البحرين": "BHD", "عمان": "OMR", "عُمان": "OMR",
+  "مصر": "EGP", "الأردن": "JOD", "تركيا": "TRY",
 };
-function homeCurrency() { return COUNTRY_CUR[(home.split(",")[1] || home).trim().toLowerCase()] || "USD"; }
+function homeCurrency() { return COUNTRY_CUR[(home.split(/[,،]/)[1] || home).trim().toLowerCase()] || "USD"; }
 if (!currency) currency = homeCurrency();
 paintCurrency();
 fetch("/api/rates").then((r) => r.json()).then((d) => {
   if (!d.rates?.USD) return;
   rates = d.rates;
+  if (Array.isArray(d.pick)) PICK = d.pick;
   paintCurrency(); paintSliders(); paintTrips();
   if (currency !== "USD" && !busy) restore();
 }).catch(() => { /* the pegs are fine */ });
@@ -549,7 +576,7 @@ function destInfo(city) {
     if (!p) return null;
     const w = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${p.latitude}&longitude=${p.longitude}`
       + "&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=6")).json();
-    return { name: p.name, country: p.country || "", tz: p.timezone, w };
+    return { name: p.name, country: p.country || "", code: p.country_code || "", lat: p.latitude, lon: p.longitude, tz: p.timezone, w };
   })().catch(() => null);
   return destCache[city];
 }
@@ -561,16 +588,18 @@ function hoursApart(tz) {
 async function fillDest(root) {
   fillMaps(root);
   for (const el of root.querySelectorAll(".dest:empty")) {
-    el.innerHTML = '<span class="muted">🌍 Checking the weather there…</span>';
+    el.innerHTML = `<span class="muted">${T("🌍 Checking the weather there…")}</span>`;
     const d = await destInfo(el.dataset.city);
     if (!d?.w?.daily) { el.remove(); continue; }
     const diff = hoursApart(d.tz);
     const time = new Date().toLocaleTimeString("en", { timeZone: d.tz, hour: "2-digit", minute: "2-digit" });
-    const days = d.w.daily.time.map((t, i) => `<span><small>${new Date(`${t}T12:00`).toLocaleDateString("en", { weekday: "short" })}</small>${WX(d.w.daily.weather_code[i])}<b>${Math.round(d.w.daily.temperature_2m_max[i])}°</b><small>${Math.round(d.w.daily.temperature_2m_min[i])}°</small></span>`).join("");
+    const days = d.w.daily.time.map((t, i) => `<span><small>${new Date(`${t}T12:00`).toLocaleDateString(lang === "ar" ? "ar" : "en", { weekday: "short" })}</small>${WX(d.w.daily.weather_code[i])}<b>${Math.round(d.w.daily.temperature_2m_max[i])}°</b><small>${Math.round(d.w.daily.temperature_2m_min[i])}°</small></span>`).join("");
     el.innerHTML = `<div class="d-head"><b>📍 ${esc(d.name)}</b>${d.country ? `, ${esc(d.country)}` : ""}
-      <span>🕐 ${time} there${diff ? ` (${Math.abs(diff)}h ${diff > 0 ? "ahead of" : "behind"} you)` : " (same time as you)"}</span>
-      <span>${WX(d.w.current.weather_code)} ${Math.round(d.w.current.temperature_2m)}°C now</span></div>
-      <div class="d-days" title="This week's forecast">${days}</div><div class="d-pack"></div>`;
+      <span>${T("🕐 {t} there", { t: time })} ${diff ? T(diff > 0 ? "({h}h ahead of you)" : "({h}h behind you)", { h: Math.abs(diff) }) : T("(same time as you)")}</span>
+      <span>${WX(d.w.current.weather_code)} ${T("{t}°C now", { t: Math.round(d.w.current.temperature_2m) })}</span></div>
+      <div class="d-days" title="This week's forecast">${days}</div><div class="d-money"></div><div class="d-pray"></div><div class="d-pack"></div>`;
+    localMoney(el.querySelector(".d-money"), d.code, +el.dataset.left || 0, +el.dataset.days || 5);
+    prayerTimes(el.querySelector(".d-pray"), d);
     fillPacking(el.querySelector(".d-pack"), el.dataset.key, +el.dataset.days || 5, d.w.daily);
     const banner = document.createElement("a");
     banner.className = "d-photo"; banner.target = "_blank"; banner.rel = "noopener noreferrer";
@@ -643,7 +672,7 @@ async function fillMaps(root) {
       const a = map.latLngToLayerPoint(p), b = map.latLngToLayerPoint(q);
       if (a.distanceTo(b) > 0.5) plane.getElement().firstChild.style.transform = `rotate(${(Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI + 45}deg)`;
     }, 80);
-    el.insertAdjacentHTML("afterend", `<div class="route-stats"><span>🌍 ${Math.round(dist).toLocaleString("en")} km</span><span>⏱️ ~${hrs(dist / 800 + 0.5 * good.length)} in the air</span><span>🌱 ~${Math.round(dist * 0.1)} kg CO₂ each</span></div>`);
+    el.insertAdjacentHTML("afterend", `<div class="route-stats"><span>${T("🌍 {k} km", { k: Math.round(dist).toLocaleString("en") })}</span><span>${T("⏱️ ~{t} in the air", { t: hrs(dist / 800 + 0.5 * good.length) })}</span><span>${T("🌱 ~{c} kg CO₂ each", { c: Math.round(dist * 0.1) })}</span></div>`);
   }
 }
 
@@ -682,31 +711,31 @@ function packingList(days, w) {
   const hot = w && Math.max(...w.temperature_2m_max) >= 28, cold = w && Math.min(...w.temperature_2m_min) <= 12;
   const wet = w && w.weather_code.some((c) => (c >= 51 && c <= 82) || c >= 95);
   const d = Math.min(days, 7);
+  const counted = [["👕 {n} tops", d], ["👖 {n} trousers / skirts", Math.ceil(d / 2)], ["🧦 {n} socks & underwear", Math.min(days + 1, 8)]];
   return [
     "🛂 Passport / ID", "🎫 Tickets & hotel booking (screenshots too)", "💳 Card + a little local cash", "🔌 Charger + power bank", "🔌 Plug adapter",
-    "💊 Medicines", `👕 ${d} tops`, `👖 ${Math.ceil(d / 2)} trousers / skirts`, `🧦 ${Math.min(days + 1, 8)} socks & underwear`, "😴 Sleepwear",
-    "🪥 Toothbrush & toiletries", "👟 Comfy walking shoes",
+    "💊 Medicines", ...counted, "😴 Sleepwear", "🪥 Toothbrush & toiletries", "👟 Comfy walking shoes",
     ...(hot ? ["🧴 Sunscreen", "🕶️ Sunglasses", "🧢 Hat", "💧 Refillable water bottle"] : []),
     ...(cold ? ["🧥 Warm jacket", "🧣 Scarf & a warm layer"] : []),
     ...(wet ? ["☂️ Umbrella or rain jacket"] : []),
     ...(days >= 5 ? ["🧺 Laundry bag"] : []), "🎧 Headphones for the flight",
-  ];
+  ].map((x) => (Array.isArray(x) ? { id: x[0].replace("{n}", x[1]), label: T(x[0], { n: x[1] }) } : { id: x, label: T(x) }));
 }
 function fillPacking(box, key, days, w) {
   const items = packingList(days, w), done = new Set(packed[key] || []);
-  const count = () => `${items.filter((x) => done.has(x)).length}/${items.length}`;
-  box.innerHTML = `<details class="pack"><summary>🎒 Packing list for ${days} day${days > 1 ? "s" : ""} <b>${count()}</b></summary><div class="pack-items"></div><small class="muted">Based on this week's weather there.</small></details>`;
+  const count = () => `${items.filter((x) => done.has(x.id)).length}/${items.length}`;
+  box.innerHTML = `<details class="pack"><summary>${T("🎒 Packing list for {d} days", { d: days })} <b>${count()}</b></summary><div class="pack-items"></div><small class="muted">${T("Based on this week's weather there.")}</small></details>`;
   box.querySelector(".pack-items").replaceChildren(...items.map((x) => {
     const l = document.createElement("label");
-    const c = Object.assign(document.createElement("input"), { type: "checkbox", checked: done.has(x) });
+    const c = Object.assign(document.createElement("input"), { type: "checkbox", checked: done.has(x.id) });
     c.addEventListener("change", () => {
-      c.checked ? done.add(x) : done.delete(x);
+      c.checked ? done.add(x.id) : done.delete(x.id);
       packed[key] = [...done];
       try { localStorage.setItem(PACK, JSON.stringify(packed)); } catch { /* private mode */ }
       box.querySelector("summary b").textContent = count();
-      if (items.every((y) => done.has(y))) { confetti(); award("packer"); }
+      if (items.every((y) => done.has(y.id))) { confetti(); award("packer"); }
     });
-    l.append(c, document.createTextNode(` ${x}`));
+    l.append(c, document.createTextNode(` ${x.label}`));
     return l;
   }));
 }
@@ -725,7 +754,7 @@ function award(id) {
   if (passport.badges[id] || !BADGES[id]) return;
   passport.badges[id] = Date.now();
   keepPassport();
-  flash(`${BADGES[id][0]} Badge unlocked: ${BADGES[id][1]}!`);
+  flash(T("{i} Badge unlocked: {n}!", { i: BADGES[id][0], n: T(BADGES[id][1]) }));
 }
 function addStamp(trip, fits) {
   const city = cityName(trip.to_city);
@@ -740,12 +769,12 @@ function paintPassport() {
   const box = $("passport");
   const hash = (s) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7);
   const got = Object.keys(passport.badges).length;
-  box.innerHTML = `<div class="pp-head"><b>🛂 My travel passport</b><small>${passport.stamps.length} stamp${passport.stamps.length === 1 ? "" : "s"} · ${got}/${Object.keys(BADGES).length} badges</small></div>
+  box.innerHTML = `<div class="pp-head"><b>${T("🛂 My travel passport")}</b><small>${T("{n} stamps · {b}/{t} badges", { n: passport.stamps.length, b: got, t: Object.keys(BADGES).length })}</small></div>
     <div class="stamps">${passport.stamps.length ? passport.stamps.map((s) => {
       const h = Math.abs(hash(s.city));
       return `<span class="stamp-ink" style="--c:${STAMP_COLORS[h % STAMP_COLORS.length]};--r:${(h % 25) - 12}deg"><b>${esc(s.code)}</b><small>${esc(s.city)}</small><i>${new Date(s.at).toLocaleDateString("en", { month: "short", year: "2-digit" })}</i></span>`;
-    }).join("") : '<p class="muted">Plan a trip to get your first stamp.</p>'}</div>
-    <div class="badges">${Object.entries(BADGES).map(([id, [icon, name, how]]) => `<span class="badge-${passport.badges[id] ? "on" : "off"}" title="${esc(how)}"><i>${icon}</i><b>${esc(name)}</b><small>${esc(how)}</small></span>`).join("")}</div>`;
+    }).join("") : `<p class="muted">${T("Plan a trip to get your first stamp.")}</p>`}</div>
+    <div class="badges">${Object.entries(BADGES).map(([id, [icon, name, how]]) => `<span class="badge-${passport.badges[id] ? "on" : "off"}" title="${esc(T(how))}"><i>${icon}</i><b>${esc(T(name))}</b><small>${esc(T(how))}</small></span>`).join("")}</div>`;
 }
 
 /* ---------- split the cost ---------- */
@@ -756,7 +785,7 @@ $("msgs").addEventListener("click", (e) => {
   const n = Math.max(1, Math.min(20, +box.dataset.n + +b.dataset.d));
   box.dataset.n = n;
   box.querySelector("b").textContent = n;
-  box.querySelector("span").textContent = `= ${money(+box.dataset.total / n)} each`;
+  box.querySelector("span").textContent = T("= {x} each", { x: money(+box.dataset.total / n) });
 });
 
 /* ---------- a game while the agent searches: guess the country from three emoji ---------- */
@@ -781,16 +810,16 @@ function nextQuestion() {
   const [clue, country] = QUIZ[Math.floor(Math.random() * QUIZ.length)];
   const others = QUIZ.map((q) => q[1]).filter((c) => c !== country).sort(() => Math.random() - 0.5).slice(0, 2);
   const options = [country, ...others].sort(() => Math.random() - 0.5);
-  quiz.el.innerHTML = `<div class="q-top"><span>🎮 While I search: which country?</span><b>${quiz.right}/${quiz.asked}</b></div><div class="q-clue">${clue}</div><div class="q-opts"></div>`;
+  quiz.el.innerHTML = `<div class="q-top"><span>${T("🎮 While I search: which country?")}</span><b>${quiz.right}/${quiz.asked}</b></div><div class="q-clue">${clue}</div><div class="q-opts"></div>`;
   quiz.el.querySelector(".q-opts").replaceChildren(...options.map((o) => {
     const b = document.createElement("button");
-    b.type = "button"; b.textContent = o;
+    b.type = "button"; b.textContent = T(o); b.dataset.id = o;
     b.addEventListener("click", () => {
       if (!quiz || quiz.el.classList.contains("locked")) return;
       quiz.el.classList.add("locked");
       quiz.asked += 1;
       if (o === country) quiz.right += 1;
-      quiz.el.querySelectorAll(".q-opts button").forEach((x) => x.classList.add(x.textContent === country ? "yes" : x === b ? "no" : "dim"));
+      quiz.el.querySelectorAll(".q-opts button").forEach((x) => x.classList.add(x.dataset.id === country ? "yes" : x === b ? "no" : "dim"));
       quiz.el.querySelector(".q-top b").textContent = `${quiz.right}/${quiz.asked}`;
       setTimeout(() => { quiz?.el.classList.remove("locked"); nextQuestion(); }, 1000);
     });
@@ -803,7 +832,7 @@ function endQuiz() {
   quiz = null;
   el.remove();
   if (asked >= 3 && right === asked) award("quiz");
-  if (asked) flash(right === asked ? `🏆 Perfect! ${right}/${asked} countries` : `🎮 You got ${right}/${asked}. Your trip's ready!`);
+  if (asked) flash(T(right === asked ? "🏆 Perfect! {r}/{a} countries" : "🎮 You got {r}/{a}. Your trip's ready!", { r: right, a: asked }));
 }
 
 /* ---------- speak your trip (browser speech recognition, where supported) ---------- */
@@ -814,11 +843,11 @@ if (Speech) {
   $("mic").addEventListener("click", () => {
     if (rec) { rec.stop(); return; }
     rec = new Speech();
-    rec.lang = navigator.language || "en-US";
+    rec.lang = lang === "ar" ? "ar-SA" : navigator.language || "en-US";
     rec.interimResults = true;
     const before = $("input").value.trim();
     rec.onresult = (e) => { $("input").value = `${before} ${[...e.results].map((r) => r[0].transcript).join("")}`.trim(); grow(); };
-    rec.onerror = (e) => { if (e.error === "not-allowed") flash("Allow the microphone to talk to Tripmate."); };
+    rec.onerror = (e) => { if (e.error === "not-allowed") flash(T("Allow the microphone to talk to Tripmate.")); };
     rec.onend = () => { rec = null; $("mic").classList.remove("on"); $("input").focus(); };
     rec.start();
     $("mic").classList.add("on");
@@ -838,12 +867,12 @@ function calendar(s) {
       `SUMMARY:${ics(`✈️ ${cityName(f.from)} → ${cityName(f.to)} (${f.airline})`)}`,
       `DESCRIPTION:${ics(`${f.from} → ${f.to}, about $${f.price_usd}. ${f.link || ""}\nPlanned with Tripmate.`)}`, "END:VEVENT"].join("\r\n");
   }).filter(Boolean);
-  if (!events.length) { flash("These flights don't have dates yet."); return; }
+  if (!events.length) { flash(T("These flights don't have dates yet.")); return; }
   const text = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Tripmate//EN", ...events, "END:VCALENDAR"].join("\r\n");
   const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([text], { type: "text/calendar" })), download: `tripmate-${cityName(t.to_city).toLowerCase().replace(/\W+/g, "-")}.ics` });
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  flash("📅 Open the file to add it to your calendar");
+  flash(T("📅 Open the file to add it to your calendar"));
 }
 
 /* ---------- day and night: the sky follows your clock (tap the clock to switch) ---------- */
@@ -873,11 +902,112 @@ $("surprise").addEventListener("click", () => {
   }, 70);
 });
 
+/* ---------- money there: the local currency, and what's left of the budget per day ---------- */
+const CC_CUR = {
+  SA: "SAR", AE: "AED", QA: "QAR", KW: "KWD", BH: "BHD", OM: "OMR", EG: "EGP", JO: "JOD", TR: "TRY", GB: "GBP", IN: "INR", PK: "PKR",
+  US: "USD", JP: "JPY", CN: "CNY", HK: "HKD", TW: "TWD", KR: "KRW", TH: "THB", MY: "MYR", ID: "IDR", SG: "SGD", PH: "PHP", VN: "VND",
+  MV: "MVR", LK: "LKR", NP: "NPR", BD: "BDT", MA: "MAD", TN: "TND", DZ: "DZD", LB: "LBP", IQ: "IQD", GE: "GEL", AZ: "AZN", AM: "AMD",
+  UZ: "UZS", KZ: "KZT", CH: "CHF", CZ: "CZK", HU: "HUF", PL: "PLN", RO: "RON", BG: "BGN", RS: "RSD", BA: "BAM", AL: "ALL", SE: "SEK",
+  NO: "NOK", DK: "DKK", IS: "ISK", AU: "AUD", NZ: "NZD", CA: "CAD", MX: "MXN", BR: "BRL", AR: "ARS", ZA: "ZAR", KE: "KES", TZ: "TZS",
+  ...Object.fromEntries("FR DE ES IT NL IE PT AT BE GR FI HR SK SI LU MT CY EE LV LT ME".split(" ").map((c) => [c, "EUR"])),
+};
+function inCurrency(usd, cur) {
+  try { return new Intl.NumberFormat("en", { style: "currency", currency: cur, currencyDisplay: "narrowSymbol", maximumFractionDigits: 0 }).format(usd * rates[cur]); }
+  catch { return `${Math.round(usd * rates[cur]).toLocaleString("en")} ${cur}`; }
+}
+function localMoney(box, country, leftUsd, days) {
+  const cur = CC_CUR[country];
+  if (!cur || !rates[cur] || !rates[currency]) { box.remove(); return; }
+  const parts = [];
+  if (cur !== currency) {
+    const one = rates[cur] / rates[currency];
+    parts.push(T("💵 1 {a} = {x} there", { a: currency, x: `${one >= 10 ? Math.round(one).toLocaleString("en") : one.toFixed(2)} ${cur}` }));
+  }
+  if (leftUsd > 0) parts.push(T("💵 about {x} a day to spend there", { x: inCurrency(leftUsd / Math.max(1, days), cur) }));
+  if (!parts.length) { box.remove(); return; }
+  box.innerHTML = parts.map((x) => `<span>${esc(x)}</span>`).join("");
+}
+
+/* ---------- prayer times at the destination today (AlAdhan, free and keyless; Umm al-Qura method) ---------- */
+async function prayerTimes(box, d) {
+  try {
+    const day = new Date().toLocaleDateString("en-GB", { timeZone: d.tz }).split("/").join("-");
+    const r = await fetch(`https://api.aladhan.com/v1/timings/${day}?latitude=${d.lat}&longitude=${d.lon}&method=4`);
+    const t = (await r.json()).data.timings;
+    box.innerHTML = `<b>${T("🕌 Prayer times there today")}</b>${["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"].map((n) => `<span><small>${T(n)}</small>${esc(String(t[n]).slice(0, 5))}</span>`).join("")}`;
+  } catch { box.remove(); }
+}
+
+/* ---------- a trip someone shared: the link carries it after #t= ---------- */
+function sharedTrip() {
+  const m = /^#t=([\w-]+)$/.exec(location.hash);
+  if (!m) return;
+  window.history.replaceState(null, "", location.pathname);        // a refresh shouldn't add it twice
+  try {
+    const bin = atob(m[1].replace(/-/g, "+").replace(/_/g, "/"));
+    const raw = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0))));
+    const str = (v) => String(v ?? "").slice(0, 200), num = (v) => (Number.isFinite(+v) ? +v : 0);
+    const trip = {
+      ready: true, question: "", from_city: str(raw.from_city), to_city: str(raw.to_city), travellers: Math.max(1, num(raw.travellers)),
+      budget_usd: num(raw.budget_usd), total_usd: num(raw.total_usd), flights_usd: num(raw.flights_usd), stays_usd: num(raw.stays_usd), notes: str(raw.notes),
+      flights: (Array.isArray(raw.flights) ? raw.flights : []).slice(0, 8).map((f) => ({ date: str(f.date), from: str(f.from), to: str(f.to), airline: str(f.airline), price_usd: num(f.price_usd), link: str(f.link) })),
+      stays: (Array.isArray(raw.stays) ? raw.stays : []).slice(0, 8).map((h) => ({ city: str(h.city), nights: num(h.nights), name: str(h.name), price_per_night_usd: num(h.price_per_night_usd), link: str(h.link) })),
+    };
+    if (!trip.flights.length) throw new Error("empty");
+    const fits = trip.budget_usd > 0 && trip.total_usd <= trip.budget_usd;
+    const found = `\n\n(Flights found: ${trip.flights.map((f) => `${f.date} ${f.from}→${f.to} ${f.airline} $${f.price_usd}`).join("; ")}. Total $${trip.total_usd}, budget $${trip.budget_usd}.)`;
+    history.push({ role: "assistant", content: T("🎁 A friend shared this trip with you. Want it from your city? Tap below.") + found, trip });
+    save();
+    restore();
+    const last = $("msgs").lastElementChild;
+    const again = document.createElement("button");
+    again.type = "button";
+    again.textContent = T("🗺️ Plan it from {c}", { c: homeCity() });
+    again.addEventListener("click", () => send(T("{a} to {b} on similar dates, budget ${x} for one person.", { a: homeCity(), b: cityName(trip.to_city), x: Math.ceil(trip.total_usd / 50) * 50 })
+      .replace("${x}", `$${Math.ceil(trip.total_usd / 50) * 50}`)));
+    last.querySelector(".chips")?.prepend(again);
+    setRoute(trip);
+    toChat();
+    if (fits) confetti();
+  } catch { flash(T("That trip link looks broken.")); }
+}
+
+/* ---------- English / Arabic ---------- */
+function relabel() {
+  applyLang();
+  paintHome(); renderPostcards(); renderVibes(); renderMonths(); paintGo(); paintTrips(); paintPassport(); showFact();
+  $("rotator").textContent = T(WORDS[word]);
+  $("locate").textContent = T("🎯 Use my location");
+  setRoute(history.filter((m) => m.trip).pop()?.trip);
+  if (!busy) restore();
+}
+$("lang").addEventListener("click", () => {
+  lang = lang === "ar" ? "en" : "ar";
+  try { localStorage.setItem("tripmate.lang", lang); } catch { /* private mode */ }
+  relabel();
+});
+
+/* ---------- install as an app (Chrome/Edge/Android offer it; the page works offline for saved trips) ---------- */
+let installEvent = null;
+addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvent = e; $("install").hidden = false; });
+$("install").addEventListener("click", async () => {
+  if (!installEvent) return;
+  installEvent.prompt();
+  await installEvent.userChoice.catch(() => null);
+  installEvent = null;
+  $("install").hidden = true;
+});
+addEventListener("appinstalled", () => { $("install").hidden = true; flash(T("📲 Tripmate is on your home screen!")); });
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => { /* not critical */ });
+
 paintHome();
 renderPostcards();
 paintTrips();
 paintPassport();
+$("rotator").textContent = T(WORDS[0]);
+$("locate").textContent = T("🎯 Use my location");
 tickClock(); setInterval(tickClock, 15000);
 showFact(); setInterval(showFact, 9000);
 setInterval(rotate, 2600);
 restore();
+sharedTrip();

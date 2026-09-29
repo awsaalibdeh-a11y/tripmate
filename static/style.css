@@ -402,3 +402,27 @@ body.night .tab:not(.on) { color: #fff; }
   .badges { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .map { height: 160px; }
 }
+
+/* ---------- money there, prayer times, install ---------- */
+.d-money { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.d-money span { padding: 0.2rem 0.6rem; border-radius: 999px; background: #e6f8ee; color: #1d8a52; font-weight: 700; font-size: 0.8rem; }
+.d-pray { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; font-size: 0.8rem; }
+.d-pray b { margin-inline-end: 0.2rem; }
+.d-pray span { display: grid; justify-items: center; min-width: 3.4rem; padding: 0.2rem 0.4rem; border-radius: 0.6rem; background: rgba(255, 255, 255, 0.85); font-weight: 700; }
+.d-pray small { color: var(--muted); font-size: 0.66rem; font-weight: 600; }
+.install { background: linear-gradient(135deg, #e8f1ff, #fff); color: var(--blue-deep); }
+#lang { min-width: 2.6rem; padding: 0 0.8rem; font-family: "Cairo", Inter, sans-serif; font-weight: 700; }
+
+/* ---------- Arabic: right to left, with an Arabic font ---------- */
+[dir="rtl"] body, [dir="rtl"] button, [dir="rtl"] input, [dir="rtl"] textarea, [dir="rtl"] select { font-family: "Cairo", Inter, sans-serif; }
+[dir="rtl"] { --fun: "Cairo", "Fredoka", sans-serif; }
+[dir="rtl"] h1 { letter-spacing: 0; line-height: 1.2; }
+[dir="rtl"] .t-route, [dir="rtl"] .s-route { padding-right: 0; padding-left: 0.8rem; border-right: 0; border-left: 2px dashed #dbe6f5; }
+[dir="rtl"] .ticket::before, [dir="rtl"] .ticket::after { left: auto; right: 4.9rem; }
+[dir="rtl"] .msg.user { border-bottom-right-radius: 1.1rem; border-bottom-left-radius: 0.35rem; }
+[dir="rtl"] .msg.bot { border-bottom-left-radius: 1.1rem; border-bottom-right-radius: 0.35rem; }
+[dir="rtl"] .postcard { text-align: right; }
+[dir="rtl"] .msg.bot ul { padding-left: 0; padding-right: 1.2rem; }
+[dir="rtl"] .t-price { justify-items: start; }
+.map, .route, .t-route, .s-route, .t-price b, .d-days, .route-stats, .stamp-ink b { direction: ltr; }
+[dir="rtl"] .composer button#send { transform: scaleX(-1); }

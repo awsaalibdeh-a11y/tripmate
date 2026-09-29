@@ -7,10 +7,13 @@
   <meta name="description" content="Tell Tripmate where you want to go and your budget. It searches real flights, checks your budget and plans the trip.">
   <meta name="theme-color" content="#4aa3ff">
   <link rel="icon" href="{{ url_for('static', filename='icon.svg') }}" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icon-192.png') }}">
+  <link rel="manifest" href="/manifest.webmanifest">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ v }}">
+  <script defer src="{{ url_for('static', filename='i18n.js') }}?v={{ v }}"></script>
   <script defer src="{{ url_for('static', filename='app.js') }}?v={{ v }}"></script>
 </head>
 <body>
@@ -19,7 +22,7 @@
     <div class="cloud c1"></div><div class="cloud c2"></div><div class="cloud c3"></div>
     <svg class="trail" viewBox="0 0 1000 300" preserveAspectRatio="none" aria-hidden="true"><path d="M-20 260 C 250 260, 350 60, 600 110 S 900 40, 1040 30" /></svg>
     <div class="flyer" aria-hidden="true">✈️</div>
-    <div class="takeoff-text"><span class="logo-word">Tripmate</span><span id="takeoff-line">Fastening seatbelts…</span></div>
+    <div class="takeoff-text"><span class="logo-word">Tripmate</span><span id="takeoff-line">…</span></div>
   </div>
 
   <div class="sky" aria-hidden="true">
@@ -33,41 +36,45 @@
     <div class="brand"><img src="{{ url_for('static', filename='icon.svg') }}" alt="" width="40" height="40"><span>Tripmate</span></div>
     <div class="top-actions">
       <button class="pill countdown" id="next-trip" type="button" hidden></button>
+      <button class="pill install" id="install" type="button" hidden>📲 <span data-i18n>Install</span></button>
       <button class="clock" id="clock" type="button" title="Your local time. Tap to switch day and night"></button>
+      <button class="pill" id="lang" type="button" title="العربية / English">ع</button>
       <button class="pill" id="home" type="button" title="Where your trips start">📍 <span class="home-city">…</span></button>
       <label class="pill cur-pill" title="Show prices in your currency">💱<select id="cur" aria-label="Currency"><option>USD</option></select></label>
-      <button class="pill" id="new-chat" type="button">✨ <span class="long">New trip</span></button>
+      <button class="pill" id="new-chat" type="button">✨ <span class="long" data-i18n>New trip</span></button>
     </div>
   </header>
 
   <main class="layout">
     <section class="intro">
-      <p class="kicker">Your AI travel buddy</p>
-      <h1>Where to <span class="rotator" id="rotator">next?</span></h1>
-      <p class="lead">Tell Tripmate where you want to go, your dates and your budget. It searches real flights and hotels from <b class="home-city">your city</b>, adds it all up, and plans your days, or finds you a cheaper way. No idea where to go? Try <b>Explore</b>.</p>
+      <p class="kicker" data-i18n>Your AI travel buddy</p>
+      <h1><span data-i18n>Where to</span> <span class="rotator" id="rotator">…</span></h1>
+      <p class="lead" data-i18n="lead">Tell Tripmate where you want to go, your dates and your budget. It searches real flights and hotels from <b class="home-city">your city</b>, adds it all up, and plans your days, or finds you a cheaper way. No idea where to go? Try <b>Explore</b>.</p>
+
+      <div class="shared" id="shared" hidden></div>
 
       <div class="tabs" role="tablist">
-        <button class="tab on" type="button" role="tab" data-tab="cards" aria-selected="true">🗺️ Postcards</button>
-        <button class="tab" type="button" role="tab" data-tab="explore" aria-selected="false">🧭 Explore near me</button>
-        <button class="tab" type="button" role="tab" data-tab="trips" aria-selected="false">⭐ My trips <span class="count" id="trips-n"></span></button>
+        <button class="tab on" type="button" role="tab" data-tab="cards" aria-selected="true">🗺️ <span data-i18n>Postcards</span></button>
+        <button class="tab" type="button" role="tab" data-tab="explore" aria-selected="false">🧭 <span data-i18n>Explore near me</span></button>
+        <button class="tab" type="button" role="tab" data-tab="trips" aria-selected="false">⭐ <span data-i18n>My trips</span> <span class="count" id="trips-n"></span></button>
       </div>
 
       <div class="tab-panel" id="tab-cards">
-        <p class="section-label">Tap a postcard to start</p>
+        <p class="section-label" data-i18n>Tap a postcard to start</p>
         <div class="postcards" id="postcards"></div>
       </div>
 
       <div class="tab-panel" id="tab-explore" hidden>
         <div class="explore">
-          <p class="section-label">What's the vibe?</p>
+          <p class="section-label" data-i18n>What's the vibe?</p>
           <div class="vibes" id="vibes"></div>
           <div class="sliders">
-            <label>🗓️ Days <output id="days-out">4</output><input type="range" id="days" min="1" max="14" value="4"></label>
-            <label>💰 Budget <output id="budget-out">$800</output><input type="range" id="budget" min="100" max="5000" step="50" value="800"></label>
-            <label>☀️ When <select id="month"></select></label>
+            <label>🗓️ <span data-i18n>Days</span> <output id="days-out">4</output><input type="range" id="days" min="1" max="14" value="4"></label>
+            <label>💰 <span data-i18n>Budget</span> <output id="budget-out">$800</output><input type="range" id="budget" min="100" max="5000" step="50" value="800"></label>
+            <label>☀️ <span data-i18n>When</span> <select id="month"></select></label>
           </div>
           <div class="go-row">
-            <button class="go" id="explore-go" type="button">🧭 Find places near <span class="home-city">you</span></button>
+            <button class="go" id="explore-go" type="button"></button>
             <button class="dice" id="surprise" type="button" title="Surprise me: random vibe, days and month">🎲</button>
           </div>
         </div>
@@ -79,35 +86,35 @@
         <div class="trips" id="trips"></div>
       </div>
 
-      <div class="fact" id="fact"><b>✈️ Did you know?</b> <span></span></div>
+      <div class="fact" id="fact"><b>✈️ <span data-i18n>Did you know?</span></b> <span class="fact-text"></span></div>
     </section>
 
     <section class="pass">
       <div class="pass-head">
-        <div><small>Boarding pass</small><b>Tripmate Air</b></div>
+        <div><small data-i18n>Boarding pass</small><b>Tripmate Air</b></div>
         <div class="route"><b id="route-from">YOU</b><span class="dash">- - - ✈ - - -</span><b id="route-to">???</b></div>
-        <div class="gate"><small>Gate</small><b>AI</b></div>
+        <div class="gate"><small data-i18n>Gate</small><b>AI</b></div>
       </div>
       <div class="msgs" id="msgs" role="log" aria-live="polite"></div>
-      <div class="working" id="working" hidden><span class="mini-plane">✈️</span><span id="working-line">Searching flights…</span><button class="stop" id="stop" type="button">Stop</button></div>
+      <div class="working" id="working" hidden><span class="mini-plane">✈️</span><span id="working-line"></span><button class="stop" id="stop" type="button" data-i18n>Stop</button></div>
       <form class="composer" id="composer">
-        <textarea id="input" rows="1" maxlength="1000" placeholder="From where, to where, when, and your budget…" aria-label="Your message"></textarea>
+        <textarea id="input" rows="1" maxlength="1000" placeholder="From where, to where, when, and your budget…" data-i18n-ph aria-label="Your message"></textarea>
         <button id="mic" class="mic" type="button" aria-label="Speak your trip" title="Speak your trip" hidden>🎙️</button>
         <button id="send" type="submit" aria-label="Send">➤</button>
       </form>
-      <div class="pass-foot"><span>Prices are estimates from the web: always check before you book.</span><span class="barcode" aria-hidden="true"></span></div>
+      <div class="pass-foot"><span data-i18n>Prices are estimates from the web: always check before you book.</span><span class="barcode" aria-hidden="true"></span></div>
     </section>
   </main>
 
   <dialog class="sheet" id="home-sheet" aria-labelledby="home-title">
     <div class="sheet-card">
-      <h3 id="home-title">📍 Where do you live?</h3>
-      <p class="muted">Your trips start here, and Explore suggests places inside your country and nearby. It stays in this browser.</p>
-      <button class="big" id="locate" type="button">🎯 Use my location</button>
-      <div class="or"><span>or type your city</span></div>
-      <input id="home-input" list="home-list" placeholder="e.g. Jeddah, Saudi Arabia" maxlength="60" autocomplete="off">
+      <h3 id="home-title">📍 <span data-i18n>Where do you live?</span></h3>
+      <p class="muted" data-i18n>Your trips start here, and Explore suggests places inside your country and nearby. It stays in this browser.</p>
+      <button class="big" id="locate" type="button"></button>
+      <div class="or"><span data-i18n>or type your city</span></div>
+      <input id="home-input" list="home-list" placeholder="e.g. Jeddah, Saudi Arabia" data-i18n-ph maxlength="60" autocomplete="off">
       <datalist id="home-list"></datalist>
-      <div class="sheet-actions"><button class="ghost" id="home-cancel" type="button">Cancel</button><button class="primary" id="home-save" type="button">Save</button></div>
+      <div class="sheet-actions"><button class="ghost" id="home-cancel" type="button" data-i18n>Cancel</button><button class="primary" id="home-save" type="button" data-i18n>Save</button></div>
     </div>
   </dialog>
   <div class="confetti" id="confetti" aria-hidden="true"></div>

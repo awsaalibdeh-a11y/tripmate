@@ -71,6 +71,26 @@ def index():
     return resp
 
 
+@app.route("/manifest.webmanifest")
+def manifest():
+    """Lets phones install Tripmate as an app."""
+    icon = lambda f, size, purpose="any": {"src": f"/static/{f}", "sizes": size, "type": "image/png", "purpose": purpose}
+    resp = jsonify(name="Tripmate", short_name="Tripmate", description="Cheap trips, planned for you.", start_url="/",
+                   display="standalone", background_color="#b7e0ff", theme_color="#4aa3ff",
+                   icons=[icon("icon-192.png", "192x192"), icon("icon-512.png", "512x512"), icon("icon-maskable.png", "512x512", "maskable")])
+    resp.mimetype = "application/manifest+json"
+    return resp
+
+
+@app.route("/sw.js")
+def service_worker():
+    """Served from the root so it can look after the whole site."""
+    resp = app.send_static_file("sw.js")
+    resp.headers["Cache-Control"] = "no-cache"
+    resp.headers["Service-Worker-Allowed"] = "/"
+    return resp
+
+
 @app.route("/healthz")
 def healthz():
     return "ok"
@@ -93,13 +113,14 @@ def chat():
         return jsonify(error="Say where you'd like to go."), 400
 
     home = re.sub(r"[^\w ,.'-]", "", str(body.get("home") or ""), flags=re.UNICODE)[:80]
+    lang = "ar" if body.get("lang") == "ar" else "en"
 
     def line(event):
         return json.dumps(event) + "\n"
 
     def stream():
         try:
-            for event in agent.run(history, home):
+            for event in agent.run(history, home, lang):
                 yield line(event)
         except Exception as exc:                                     # show the traveller something human, log the rest
             log.exception("agent failed")
@@ -124,12 +145,11 @@ def rates():
         try:
             r = requests.get("https://open.er-api.com/v6/latest/USD", timeout=8)
             r.raise_for_status()
-            got = r.json()["rates"]
-            _rates.update(at=time.time(), rates={c: got[c] for c in CURRENCIES if c in got})
+            _rates.update(at=time.time(), rates=r.json()["rates"])     # all of them: trips show money in the local currency
         except Exception as exc:                                      # keep what we had; try again in 10 minutes
             log.warning("rates: %s", exc)
             _rates["at"] = time.time() - 6 * 3600 + 600
-    resp = jsonify(rates=_rates["rates"])
+    resp = jsonify(rates=_rates["rates"], pick=CURRENCIES)
     resp.headers["Cache-Control"] = "public, max-age=3600"
     return resp
 
@@ -149,7 +169,8 @@ def explore():
     except (TypeError, ValueError):
         return jsonify(error="Days and budget should be numbers."), 400
     try:
-        places = agent.explore(clean(b.get("home"), 80), days, budget, clean(b.get("vibe"), 40), clean(b.get("month"), 20))
+        places = agent.explore(clean(b.get("home"), 80), days, budget, clean(b.get("vibe"), 40), clean(b.get("month"), 20),
+                               "ar" if b.get("lang") == "ar" else "en")
     except RuntimeError as exc:
         return jsonify(error=str(exc)), 502
     except Exception:
