@@ -78,9 +78,12 @@ function setRoute(trip) {
 
 /** Quick replies under an answer: tap to send. */
 function chips(el, trip, fits) {
-  const list = !trip ? [] : fits
-    ? ["📅 Try other dates", "🏨 Find a nicer hotel", "🍽️ Where should I eat?", "➕ Add another city"]
-    : [`💰 Raise my budget to $${Math.ceil(trip.total_usd / 50) * 50}`, "📅 Find cheaper dates", "🛫 Try nearby airports", "✂️ Make it shorter"];
+  const planned = history.some((m) => m.trip);                     // a question answered about a trip we already found
+  const list = trip ? (fits
+    ? ["📅 Try other dates", "🏨 Find a nicer hotel", "🍽️ Where should I eat?", "🎒 Packing list"]
+    : [`💰 Raise my budget to $${Math.ceil(trip.total_usd / 50) * 50}`, "📅 Find cheaper dates", "🛫 Try nearby airports", "✂️ Make it shorter"])
+    : planned ? ["🌦️ What's the weather like?", "🛂 Do I need a visa?", "🚕 How do I get around?", "💬 Useful local phrases"] : [];
+  if (!list.length && !trip) return;
   const box = document.createElement("div");
   box.className = "chips";
   for (const c of list) {
@@ -88,6 +91,14 @@ function chips(el, trip, fits) {
     b.type = "button"; b.textContent = c;
     b.addEventListener("click", () => send(c.replace(/^\S+\s/, "")));
     box.append(b);
+  }
+  if (trip) {
+    const star = document.createElement("button");
+    star.type = "button"; star.className = "save";
+    const saved = () => trips.some((t) => t.key === tripKey(trip));
+    star.textContent = saved() ? "⭐ Saved" : "☆ Save trip";
+    star.addEventListener("click", () => { if (!saved()) saveTrip(trip); star.textContent = "⭐ Saved"; });
+    box.append(star);
   }
   const share = document.createElement("button");
   share.type = "button"; share.className = "share"; share.textContent = "📤 Share this trip";
@@ -139,7 +150,7 @@ async function send(text) {
   try {
     controller = new AbortController();
     const r = await fetch("/api/chat", { method: "POST", signal: controller.signal, headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: history.map(({ role, content }) => ({ role, content })) }) });
+      body: JSON.stringify({ home, messages: history.map(({ role, content }) => ({ role, content })) }) });
     if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || "Couldn't reach Tripmate."); }
     const reader = r.body.getReader(), dec = new TextDecoder();
     let buf = "";
@@ -159,6 +170,7 @@ async function send(text) {
           trip = ev.trip;
           setRoute(trip);
           answer.insertAdjacentHTML("afterbegin", tickets(trip, ev.fits));
+          if (ev.fits) confetti();
         } else if (ev.type === "delta") {
           working(false);
           reply += ev.text;
@@ -216,14 +228,15 @@ setTimeout(() => { clearInterval(takeoffTimer); $("takeoff")?.classList.add("gon
 
 /* ---------- postcards, facts, the rotating headline, the clock ---------- */
 const POSTCARDS = [
-  { city: "Istanbul", emoji: "🕌", tint: "#ffb86b", prompt: "Dammam to Istanbul, then Istanbul to Dubai, then back to Dammam. A week in each city, starting next Sunday. Budget $1,000 for one person." },
-  { city: "Dubai", emoji: "🏙️", tint: "#7cc4ff", prompt: "Riyadh to Dubai for a weekend next month, budget $400, one person." },
-  { city: "Maldives", emoji: "🏝️", tint: "#5fe0c8", prompt: "From Jeddah, the cheapest beach holiday I can do for 5 days in November with $700." },
-  { city: "Paris", emoji: "🗼", tint: "#ff9fb8", prompt: "Riyadh to Paris for 6 days in December, budget $1,200 for one person." },
-  { city: "Tokyo", emoji: "🗾", tint: "#c9a7ff", prompt: "Dubai to Tokyo for 10 days in the spring, budget $1,800 for one person." },
-  { city: "Surprise me", emoji: "🎲", tint: "#ffe07a", prompt: "Surprise me: the most interesting trip I can do for 5 days from Riyadh next month with $600." },
+  { city: "Istanbul", emoji: "🕌", tint: "#ffb86b", prompt: (h) => `${h} to Istanbul for 5 days next month, with a cheap hotel. Budget $900 for one person.` },
+  { city: "Dubai", emoji: "🏙️", tint: "#7cc4ff", prompt: (h) => `${h} to Dubai for a weekend next month, budget $400, one person.` },
+  { city: "Maldives", emoji: "🏝️", tint: "#5fe0c8", prompt: (h) => `From ${h}, the cheapest beach holiday I can do for 5 days in November with $700.` },
+  { city: "Paris", emoji: "🗼", tint: "#ff9fb8", prompt: (h) => `${h} to Paris for 6 days in December, budget $1,200 for one person.` },
+  { city: "Tokyo", emoji: "🗾", tint: "#c9a7ff", prompt: (h) => `${h} to Tokyo for 10 days in the spring, budget $1,800 for one person.` },
+  { city: "Surprise me", emoji: "🎲", tint: "#ffe07a", prompt: (h) => `Surprise me: the most interesting trip I can do for 5 days from ${h} next month with $600.` },
 ];
-$("postcards").replaceChildren(...POSTCARDS.map((p) => {
+function renderPostcards() {
+ $("postcards").replaceChildren(...POSTCARDS.filter((p) => p.city.toLowerCase() !== homeCity().toLowerCase()).map((p) => {
   const b = document.createElement("button");
   b.className = "postcard";
   b.type = "button";
@@ -233,11 +246,13 @@ $("postcards").replaceChildren(...POSTCARDS.map((p) => {
     if (busy) return;
     b.classList.add("sent");
     setTimeout(() => b.classList.remove("sent"), 900);
-    if (innerWidth < 900) document.querySelector(".pass").scrollIntoView({ behavior: "smooth" });
-    send(p.prompt);
+    toChat();
+    send(p.prompt(homeCity()));
   });
   return b;
-}));
+ }));
+}
+const toChat = () => { if (innerWidth < 900) document.querySelector(".pass").scrollIntoView({ behavior: "smooth" }); };
 const FACTS = [
   "Tuesdays and Wednesdays are often the cheapest days to fly.",
   "Booking about 1 to 3 months ahead usually beats booking last minute.",
@@ -270,9 +285,209 @@ $("cur").addEventListener("click", () => {
   try { localStorage.setItem("tripmate.cur", currency); } catch { /* ignore */ }
   paintCurrency();
   if (!busy) restore();                                             // redraw the tickets in the new currency
+  paintSliders(); paintTrips();
+  $("places").replaceChildren();
 });
 paintCurrency();
 
+/* ---------- home: where trips start ---------- */
+// A first guess from the time zone (no permission needed); "Use my location" asks the browser only when tapped.
+const TZ_HOME = {
+  "Asia/Riyadh": "Riyadh, Saudi Arabia", "Asia/Dubai": "Dubai, UAE", "Asia/Qatar": "Doha, Qatar", "Asia/Bahrain": "Manama, Bahrain",
+  "Asia/Kuwait": "Kuwait City, Kuwait", "Asia/Muscat": "Muscat, Oman", "Asia/Amman": "Amman, Jordan", "Asia/Baghdad": "Baghdad, Iraq",
+  "Africa/Cairo": "Cairo, Egypt", "Africa/Casablanca": "Casablanca, Morocco", "Europe/Istanbul": "Istanbul, Türkiye", "Asia/Karachi": "Karachi, Pakistan",
+  "Asia/Kolkata": "Delhi, India", "Europe/London": "London, UK", "Europe/Paris": "Paris, France", "Europe/Berlin": "Berlin, Germany",
+  "America/New_York": "New York, USA", "America/Chicago": "Chicago, USA", "America/Los_Angeles": "Los Angeles, USA", "America/Toronto": "Toronto, Canada",
+  "Asia/Tokyo": "Tokyo, Japan", "Asia/Singapore": "Singapore", "Australia/Sydney": "Sydney, Australia",
+};
+function guessHome() {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    return TZ_HOME[tz] || (tz.includes("/") ? tz.split("/").pop().replace(/_/g, " ") : "Riyadh, Saudi Arabia");
+  } catch { return "Riyadh, Saudi Arabia"; }
+}
+let home = (() => { try { return localStorage.getItem("tripmate.home") || ""; } catch { return ""; } })() || guessHome();
+function homeCity() { return home.split(",")[0].trim(); }
+function paintHome() { document.querySelectorAll(".home-city").forEach((el) => { el.textContent = homeCity(); }); }
+function setHome(value) {
+  value = String(value || "").replace(/[^\p{L}\p{N} ,.'-]/gu, "").trim().slice(0, 60);
+  if (!value) return false;
+  home = value;
+  try { localStorage.setItem("tripmate.home", home); } catch { /* private mode */ }
+  paintHome(); renderPostcards();
+  $("places").replaceChildren();                                   // old ideas were for the old home
+  flash(`📍 Trips now start from ${homeCity()}`);
+  return true;
+}
+$("home-list").replaceChildren(...[...new Set(Object.values(TZ_HOME))].map((v) => Object.assign(document.createElement("option"), { value: v })));
+$("home").addEventListener("click", () => { $("home-input").value = home; $("home-sheet").showModal(); });
+$("home-cancel").addEventListener("click", () => $("home-sheet").close());
+const saveHome = () => { if (setHome($("home-input").value)) $("home-sheet").close(); };
+$("home-save").addEventListener("click", saveHome);
+$("home-input").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); saveHome(); } });
+$("home-sheet").addEventListener("click", (e) => { if (e.target === $("home-sheet")) $("home-sheet").close(); });   // tap outside
+$("locate").addEventListener("click", () => {
+  const btn = $("locate");
+  if (!navigator.geolocation) { flash("This browser can't share your location. Type your city instead."); return; }
+  btn.disabled = true; btn.textContent = "🎯 Finding you…";
+  const done = () => { btn.disabled = false; btn.textContent = "🎯 Use my location"; };
+  navigator.geolocation.getCurrentPosition(async (pos) => {
+    try {
+      // rounded to ~1 km: plenty to name the city, and no exact address leaves the phone
+      const lat = pos.coords.latitude.toFixed(2), lon = pos.coords.longitude.toFixed(2);
+      const r = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
+      const d = await r.json();
+      const city = d.city || d.locality || d.principalSubdivision;
+      if (!city) throw new Error("no city");
+      if (setHome(d.countryName ? `${city}, ${d.countryName}` : city)) $("home-sheet").close();
+    } catch { flash("Couldn't work out your city. Type it instead."); }
+    done();
+  }, () => { flash("Location is off. Type your city instead."); done(); }, { timeout: 12000, maximumAge: 3600000 });
+});
+
+/* ---------- tabs: postcards, explore, my trips ---------- */
+function showTab(name) {
+  document.querySelectorAll(".tab").forEach((t) => { const on = t.dataset.tab === name; t.classList.toggle("on", on); t.setAttribute("aria-selected", on); });
+  document.querySelectorAll(".tab-panel").forEach((p) => { p.hidden = p.id !== `tab-${name}`; });
+}
+document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+/* ---------- explore: where can I go from home? ---------- */
+const VIBES = ["🏖️ Beach", "🏔️ Nature", "🏙️ City lights", "🕌 History & culture", "🍜 Food", "🎢 Family fun", "🛍️ Shopping", "💆 Relax"];
+let vibe = "🏖️ Beach";
+$("vibes").replaceChildren(...VIBES.map((v) => {
+  const b = document.createElement("button");
+  b.type = "button"; b.textContent = v; b.className = v === vibe ? "on" : "";
+  b.addEventListener("click", () => { vibe = v; $("vibes").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b)); });
+  return b;
+}));
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+$("month").replaceChildren(...Array.from({ length: 12 }, (_, i) => {
+  const m = MONTHS[(new Date().getMonth() + i) % 12];
+  return Object.assign(document.createElement("option"), { value: m, textContent: i === 0 ? `${m} (this month)` : m });
+}));
+$("month").selectedIndex = 1;
+const paintSliders = () => { $("days-out").textContent = $("days").value; $("budget-out").textContent = money(+$("budget").value); };
+$("days").addEventListener("input", paintSliders);
+$("budget").addEventListener("input", paintSliders);
+paintSliders();
+
+let exploring = false;
+$("explore-go").addEventListener("click", async () => {
+  if (exploring) return;
+  exploring = true;
+  const go = $("explore-go"), box = $("places");
+  go.disabled = true;
+  const globes = ["🌍", "🌎", "🌏"];
+  let g = 0;
+  const spin = setInterval(() => { g = (g + 1) % 3; go.textContent = `${globes[g]} Spinning the globe…`; }, 350);
+  box.replaceChildren(...Array.from({ length: 4 }, () => Object.assign(document.createElement("div"), { className: "place ghost" })));
+  const ask = { home, days: +$("days").value, budget: +$("budget").value, vibe: vibe.replace(/^\S+\s/, ""), month: $("month").value };
+  try {
+    const r = await fetch("/api/explore", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(ask) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || "Couldn't find ideas right now.");
+    const places = [...d.places].sort((a, b) => b.domestic - a.domestic);
+    box.replaceChildren(...places.map((p, i) => placeCard(p, ask, i)));
+  } catch (e) {
+    box.innerHTML = `<p class="err">${esc(e.message)} Try again.</p>`;
+  }
+  clearInterval(spin);
+  go.disabled = false;
+  go.innerHTML = `🧭 Find places near <span class="home-city">${esc(homeCity())}</span>`;
+  exploring = false;
+});
+function placeCard(p, ask, i) {
+  const el = document.createElement("article");
+  el.className = `place ${p.domestic ? "domestic" : "abroad"}`;
+  el.style.animationDelay = `${i * 70}ms`;
+  const over = p.est_total_usd > ask.budget;
+  const how = p.flight_hours > 0 ? `✈️ ${p.flight_hours < 1 ? "<1" : Math.round(p.flight_hours * 10) / 10}h flight` : "🚗 by road or train";
+  el.innerHTML = `
+    <div class="p-top"><span class="p-emoji">${esc(p.emoji)}</span><div class="p-name"><b>${esc(p.name)}</b><small>${esc(p.country)}</small></div>
+      <span class="badge">${p.domestic ? "🏠 In your country" : "🌍 Nearby abroad"}</span></div>
+    <p class="p-why">${esc(p.why)}</p>
+    <p class="p-hl">⭐ Don't miss: ${esc(p.highlight)}</p>
+    <div class="p-stats"><span>${how}</span><span>📅 Best: ${esc(p.best_months)}</span><span>🛏️ ~${money(p.est_daily_usd)}/day</span></div>
+    <div class="p-foot"><div><b class="${over ? "over" : ""}">~${money(p.est_total_usd)}</b><small>${ask.days} days, rough guess</small></div><button type="button">Plan this ✈️</button></div>`;
+  el.querySelector("button").addEventListener("click", () => {
+    if (busy) return;
+    toChat();
+    send(`${homeCity()} to ${p.name}, ${p.country} for ${ask.days} days in ${ask.month}, with a cheap place to stay. Budget $${Math.max(ask.budget, Math.ceil(p.est_total_usd / 50) * 50)} for one person.`);
+  });
+  return el;
+}
+
+/* ---------- my trips: saved in this browser, with a countdown ---------- */
+const TRIPS = "tripmate.trips";
+let trips = (() => { try { return JSON.parse(localStorage.getItem(TRIPS) || "[]"); } catch { return []; } })();
+const tripKey = (t) => `${t.from_city}|${t.to_city}|${t.flights?.[0]?.date}|${t.total_usd}`;
+function tripDate(t) {
+  const raw = t.flights?.[0]?.date;
+  if (!raw) return null;
+  let d = new Date(raw);
+  if (isNaN(d)) d = new Date(`${raw} ${new Date().getFullYear()}`);
+  if (isNaN(d)) return null;
+  if (d.getFullYear() < 2020) d.setFullYear(new Date().getFullYear());
+  return d;
+}
+function countdown(t) {
+  const d = tripDate(t);
+  if (!d) return "🗓️ Date to be set";
+  const days = Math.ceil((d.setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 864e5);
+  return days > 1 ? `⏳ ${days} days to go` : days === 1 ? "🎒 Tomorrow!" : days === 0 ? "✈️ Today!" : "📸 Been there";
+}
+function persistTrips() { try { localStorage.setItem(TRIPS, JSON.stringify(trips.slice(0, 20))); } catch { /* private mode */ } paintTrips(); }
+function saveTrip(trip) {
+  trips.unshift({ key: tripKey(trip), trip, chat: history.slice(-20), saved: Date.now() });
+  persistTrips();
+  flash("⭐ Saved to My trips");
+}
+function paintTrips() {
+  $("trips-n").textContent = trips.length || "";
+  const box = $("trips");
+  if (!trips.length) {
+    box.innerHTML = '<div class="empty"><span>🧳</span><p>No saved trips yet. Plan one and tap <b>☆ Save trip</b> to keep it here with a countdown.</p></div>';
+  } else {
+    box.replaceChildren(...trips.map((s) => {
+      const t = s.trip, el = document.createElement("article");
+      el.className = "saved";
+      el.innerHTML = `<div class="s-route"><b>${esc(code(t.from_city))}</b><span>✈</span><b>${esc(code(t.to_city))}</b></div>
+        <div class="s-info"><b>${esc(t.from_city)} → ${esc(t.to_city)}</b><small>${esc(t.flights?.[0]?.date || "")} · ${money(t.total_usd)}${t.travellers > 1 ? ` · ${t.travellers} people` : ""}</small><span class="s-count">${countdown(t)}</span></div>
+        <div class="s-act"><button type="button" class="open">Open</button><button type="button" class="del" aria-label="Remove this trip">🗑️</button></div>`;
+      el.querySelector(".open").addEventListener("click", () => {
+        if (busy) return;
+        history = s.chat.slice(); save(); restore(); toChat();
+      });
+      el.querySelector(".del").addEventListener("click", () => { trips = trips.filter((x) => x !== s); persistTrips(); });
+      return el;
+    }));
+  }
+  // the soonest upcoming trip gets a countdown in the header
+  const next = trips.map((s) => ({ s, d: tripDate(s.trip) })).filter((x) => x.d && x.d >= new Date().setHours(0, 0, 0, 0)).sort((a, b) => a.d - b.d)[0];
+  $("next-trip").hidden = !next;
+  if (next) $("next-trip").textContent = `${countdown(next.s.trip).split(" ")[0]} ${next.s.trip.to_city.split(/[,(]/)[0].trim()}: ${countdown(next.s.trip).replace(/^\S+\s/, "")}`;
+}
+$("next-trip").addEventListener("click", () => { showTab("trips"); $("tab-trips").scrollIntoView({ behavior: "smooth", block: "center" }); });
+
+/* ---------- confetti when a trip fits the budget ---------- */
+function confetti() {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const box = $("confetti"), bits = ["🎉", "✈️", "🌴", "💸", "⭐", "🎈"];
+  box.replaceChildren(...Array.from({ length: 28 }, () => {
+    const s = document.createElement("span");
+    s.textContent = bits[Math.floor(Math.random() * bits.length)];
+    s.style.left = `${Math.random() * 100}%`;
+    s.style.animationDelay = `${Math.random() * 0.5}s`;
+    s.style.setProperty("--spin", `${Math.random() * 720 - 360}deg`);
+    return s;
+  }));
+  setTimeout(() => box.replaceChildren(), 3200);
+}
+
+paintHome();
+renderPostcards();
+paintTrips();
 tickClock(); setInterval(tickClock, 15000);
 showFact(); setInterval(showFact, 9000);
 setInterval(rotate, 2600);

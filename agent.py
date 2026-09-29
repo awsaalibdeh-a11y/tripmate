@@ -248,7 +248,7 @@ def explore(home, days, budget, vibe, month):
     """Trip ideas near home: quick, from the model's own knowledge (no web search), as data."""
     ask = f"Vibe: {vibe or 'anything fun'}. Days: {days}. Budget: ${budget} per person. Travelling in: {month or 'the next couple of months'}."
     r = requests.post(URL, headers=_headers(), timeout=(10, 60), json={
-        "model": MODEL, "reasoning": {"effort": "low"},
+        "model": MODEL, "reasoning": {"effort": "minimal"},
         "input": [{"role": "system", "content": EXPLORER.format(today=_today(), home=home or "Riyadh, Saudi Arabia")}, {"role": "user", "content": ask}],
         "text": {"format": {"type": "json_schema", "name": "explore", "schema": EXPLORE_SCHEMA, "strict": True}}})
     if not r.ok:

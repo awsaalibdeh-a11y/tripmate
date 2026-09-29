@@ -31,9 +31,11 @@
   <header class="top">
     <div class="brand"><img src="{{ url_for('static', filename='icon.svg') }}" alt="" width="40" height="40"><span>Tripmate</span></div>
     <div class="top-actions">
+      <button class="pill countdown" id="next-trip" type="button" hidden></button>
       <span class="clock" id="clock" title="Local time where you are"></span>
+      <button class="pill" id="home" type="button" title="Where your trips start">📍 <span class="home-city">…</span></button>
       <button class="pill" id="cur" type="button" title="Show prices in US dollars or Saudi riyals">🇺🇸 USD</button>
-      <button class="pill" id="new-chat" type="button">✨ New trip</button>
+      <button class="pill" id="new-chat" type="button">✨ <span class="long">New trip</span></button>
     </div>
   </header>
 
@@ -41,10 +43,36 @@
     <section class="intro">
       <p class="kicker">Your AI travel buddy</p>
       <h1>Where to <span class="rotator" id="rotator">next?</span></h1>
-      <p class="lead">Tell Tripmate where you're flying from, where you want to go, your dates and your budget. It searches real flights, adds it all up, and plans your days, or finds you a cheaper way.</p>
+      <p class="lead">Tell Tripmate where you want to go, your dates and your budget. It searches real flights and hotels from <b class="home-city">your city</b>, adds it all up, and plans your days, or finds you a cheaper way. No idea where to go? Try <b>Explore</b>.</p>
 
-      <p class="section-label">Tap a postcard to start</p>
-      <div class="postcards" id="postcards"></div>
+      <div class="tabs" role="tablist">
+        <button class="tab on" type="button" role="tab" data-tab="cards" aria-selected="true">🗺️ Postcards</button>
+        <button class="tab" type="button" role="tab" data-tab="explore" aria-selected="false">🧭 Explore near me</button>
+        <button class="tab" type="button" role="tab" data-tab="trips" aria-selected="false">⭐ My trips <span class="count" id="trips-n"></span></button>
+      </div>
+
+      <div class="tab-panel" id="tab-cards">
+        <p class="section-label">Tap a postcard to start</p>
+        <div class="postcards" id="postcards"></div>
+      </div>
+
+      <div class="tab-panel" id="tab-explore" hidden>
+        <div class="explore">
+          <p class="section-label">What's the vibe?</p>
+          <div class="vibes" id="vibes"></div>
+          <div class="sliders">
+            <label>🗓️ Days <output id="days-out">4</output><input type="range" id="days" min="1" max="14" value="4"></label>
+            <label>💰 Budget <output id="budget-out">$800</output><input type="range" id="budget" min="100" max="5000" step="50" value="800"></label>
+            <label>☀️ When <select id="month"></select></label>
+          </div>
+          <button class="go" id="explore-go" type="button">🧭 Find places near <span class="home-city">you</span></button>
+        </div>
+        <div class="places" id="places"></div>
+      </div>
+
+      <div class="tab-panel" id="tab-trips" hidden>
+        <div class="trips" id="trips"></div>
+      </div>
 
       <div class="fact" id="fact"><b>✈️ Did you know?</b> <span></span></div>
     </section>
@@ -64,5 +92,18 @@
       <div class="pass-foot"><span>Prices are estimates from the web: always check before you book.</span><span class="barcode" aria-hidden="true"></span></div>
     </section>
   </main>
+
+  <dialog class="sheet" id="home-sheet" aria-labelledby="home-title">
+    <div class="sheet-card">
+      <h3 id="home-title">📍 Where do you live?</h3>
+      <p class="muted">Your trips start here, and Explore suggests places inside your country and nearby. It stays in this browser.</p>
+      <button class="big" id="locate" type="button">🎯 Use my location</button>
+      <div class="or"><span>or type your city</span></div>
+      <input id="home-input" list="home-list" placeholder="e.g. Jeddah, Saudi Arabia" maxlength="60" autocomplete="off">
+      <datalist id="home-list"></datalist>
+      <div class="sheet-actions"><button class="ghost" id="home-cancel" type="button">Cancel</button><button class="primary" id="home-save" type="button">Save</button></div>
+    </div>
+  </dialog>
+  <div class="confetti" id="confetti" aria-hidden="true"></div>
 </body>
 </html>
