@@ -27,6 +27,8 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 import agent  # noqa: E402  (after load_dotenv, so it sees OPENAI_MODEL)
 
 app = Flask(__name__)
+import hubguard  # noqa: E402  (the owner's universal switches, kept in Cramly)
+hubguard.install(app, "tripmate")
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 
 _lock = threading.Lock()
